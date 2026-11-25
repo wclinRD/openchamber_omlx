@@ -4,6 +4,14 @@ import { applyHostReady } from '@openchamber/sdk/ui';
 
 import { PollFailure, FAILURE_TEXT, startPolling } from '../src/shared/client.ts';
 
+function el(tag: string, cls?: string, text?: string | null, children?: HTMLElement[]): HTMLElement {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  if (children) children.forEach((c) => e.append(c));
+  return e;
+}
+
 interface OmlxRequestStatus {
   request_id: string;
   elapsed_seconds: number | null;
@@ -124,77 +132,61 @@ function refreshStatus(snapshot: Snapshot): void {
   }
 }
 
-function createPrefillContent(): HTMLDivElement {
-  const container = document.createElement('div');
-  container.className = 'progress-container';
-
-  if (!prefillStatus) {
-    const idle = document.createElement('div');
-    idle.className = 'progress-generate';
-    idle.textContent = 'Idle';
-    container.append(idle);
-    return container;
-  }
-
-  const track = document.createElement('div');
-  track.className = 'progress-track';
-  const fill = document.createElement('div');
-  fill.className = 'progress-fill';
-  fill.style.width = `${prefillStatus.percent ?? 0}%`;
-  fill.style.setProperty('--pct', `${prefillStatus.percent ?? 0}%`);
-  track.append(fill);
-  container.append(track);
-
-  const text = document.createElement('span');
-  text.className = 'progress-text';
-  text.textContent = `${prefillStatus.percent ?? '-'}% @ ${prefillStatus.tps}`;
-  container.append(text);
-
-  return container;
+interface MeterResult {
+  meter: HTMLElement;
+  text: HTMLElement;
 }
 
-function createGenerateContent(): HTMLDivElement {
-  const div = document.createElement('div');
-  div.className = 'progress-generate';
-  div.textContent = generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle';
-  return div;
+function createPrefillMeter(): MeterResult {
+  const meter = document.createElement('div');
+  meter.className = 'meter';
+
+  const fill = document.createElement('span');
+  fill.className = 'meter-fill';
+  meter.append(fill);
+
+  const text = document.createElement('span');
+  text.className = 'value num';
+
+  if (!prefillStatus) {
+    fill.style.width = '0%';
+    text.textContent = 'Idle';
+  } else {
+    fill.style.width = `${prefillStatus.percent ?? 0}%`;
+    text.textContent = `${prefillStatus.percent ?? '-'}% @ ${prefillStatus.tps}`;
+  }
+
+  return { meter, text };
+}
+
+function createGenerateValue(): string {
+  return generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle';
 }
 
 function render(snapshot: Snapshot): void {
   root!.innerHTML = '';
 
   const rowStatus = document.createElement('div');
-  rowStatus.className = 'kv-row';
-  rowStatus.innerHTML = `
-    <span class="kv-label">OMLX Status</span>
-    <span class="kv-value ${snapshot.omlx.authenticated ? 'live' : 'offline'}">
-      ${snapshot.omlx.authenticated ? 'live' : 'offline'}
-    </span>
-  `;
+  rowStatus.className = 'line';
+  rowStatus.append(el('span', 'what', 'OMLX STATUS'), el('div', 'meter-empty'), el('span', 'value', snapshot.omlx.authenticated ? 'live' : 'offline'));
+  const statusValue = rowStatus.querySelector('.value') as HTMLElement;
+  if (snapshot.omlx.authenticated) statusValue.style.color = 'var(--oc-success)';
   root!.append(rowStatus);
 
   const rowModel = document.createElement('div');
-  rowModel.className = 'kv-row';
-  rowModel.innerHTML = `
-    <span class="kv-label">Model Name</span>
-    <span class="kv-value">${currentModel()}</span>
-  `;
+  rowModel.className = 'line';
+  rowModel.append(el('span', 'what', 'MODEL NAME'), el('div', 'meter-empty'), el('span', 'value', currentModel()));
   root!.append(rowModel);
 
   const rowPrefill = document.createElement('div');
-  rowPrefill.className = 'kv-row';
-  rowPrefill.innerHTML = `
-    <span class="kv-label">PREFILL</span>
-  `;
-  rowPrefill.append(createPrefillContent());
+  rowPrefill.className = 'line';
+  const prefTrack = createPrefillMeter();
+  rowPrefill.append(el('span', 'what', 'PREFILL'), prefTrack.meter, prefTrack.text);
   root!.append(rowPrefill);
 
   const rowGenerate = document.createElement('div');
-  rowGenerate.className = 'kv-row';
-  rowGenerate.innerHTML = `
-    <span class="kv-label">GENERATE</span>
-  `;
-  rowGenerate.append(createGenerateContent());
+  rowGenerate.className = 'line';
+  rowGenerate.append(el('span', 'what', 'GENERATE'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
   root!.append(rowGenerate);
 }
 
@@ -210,67 +202,14 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .kv-row { display: flex; align-items: center; justify-content: space-between; }
-  .kv-label {
-    flex-shrink: 0;
-    font-size: 10px;
-    color: var(--oc-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    text-align: left;
-  }
-  .kv-value {
-    flex: 1;
-    font-size: 12px;
-    font-weight: 500;
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .kv-value.live { color: var(--oc-success); }
-  .kv-value.offline { color: var(--oc-error); }
-
-  .progress-container {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .progress-track {
-    flex: 1;
-    min-width: 0;
-    height: 8px;
-    background: color-mix(in srgb, var(--oc-fg) 10%, transparent);
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-  }
-  .progress-fill {
-    position: absolute;
-    inset: 0;
-    background: var(--oc-success);
-    border-radius: 4px;
-    transition: width 0.2s ease;
-  }
-  .progress-text {
-    font-size: 11px;
-    color: var(--oc-muted);
-    white-space: nowrap;
-    flex: none;
-    margin-left: 8px;
-  }
-  .progress-generate {
-    flex: none;
-    font-size: 12px;
-    font-weight: 500;
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-left: auto;
-  }
+  .line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
+  .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .line .value.num { font-variant-numeric: tabular-nums; }
+  .meter { position: relative; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--oc-fg) 8%, transparent); overflow: hidden; }
+  .meter > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width .4s ease; }
+  .meter-empty { height: 4px; }
+  .meter-fill { background: var(--oc-success); }
 `;
 document.head.append(style);
 
