@@ -202,7 +202,7 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .line { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
+  .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
   .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .line .value.num { font-variant-numeric: tabular-nums; }
