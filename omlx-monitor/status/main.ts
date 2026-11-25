@@ -129,7 +129,10 @@ function createPrefillContent(): HTMLDivElement {
   container.className = 'progress-container';
 
   if (!prefillStatus) {
-    container.textContent = 'Idle';
+    const idle = document.createElement('div');
+    idle.className = 'progress-generate';
+    idle.textContent = 'Idle';
+    container.append(idle);
     return container;
   }
 
