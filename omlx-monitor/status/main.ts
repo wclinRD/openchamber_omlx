@@ -105,7 +105,7 @@ function refreshStatus(snapshot: Snapshot): void {
       prefillStatus = {
         model: m.id,
         tokens: `${p.processed ?? 0} tokens`,
-        tps: `${p.speed ?? 0} tps`,
+        tps: `${p.speed != null ? p.speed.toFixed(2) : '0'} tps`,
       };
     }
     if (!generatingStatus && m.generating.length > 0) {
@@ -114,7 +114,7 @@ function refreshStatus(snapshot: Snapshot): void {
       generatingStatus = {
         model: m.id,
         tokens: `${g.generated_tokens ?? 0} tokens`,
-        tps: `${g.tokens_per_second ?? 0} tps`,
+        tps: `${g.tokens_per_second != null ? g.tokens_per_second.toFixed(2) : '0'} tps`,
       };
     }
   }
