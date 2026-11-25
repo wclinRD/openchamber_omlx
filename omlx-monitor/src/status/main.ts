@@ -60,40 +60,71 @@ interface Snapshot {
   warnings: { code: string; message: string }[];
 }
 
+interface StatusInfo {
+  model: string;
+  tokens: string;
+  tps: string;
+}
+
 const host = connectHost();
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
-let currentModel = 'oMLX';
-let currentTokens = '0 tokens';
-let currentTps = 'offline';
+let prefillStatus: StatusInfo | null = null;
+let generatingStatus: StatusInfo | null = null;
 let currentStatus: Snapshot | null = null;
 
-function refreshStatus(snapshot: Snapshot) {
+function refreshStatus(snapshot: Snapshot): void {
   currentStatus = snapshot;
   const modelStatuses = snapshot.omlx.active_models;
+  prefillStatus = null;
+  generatingStatus = null;
+
   for (const m of modelStatuses) {
-    if (m.prefilling.length > 0) {
-      currentModel = m.id;
+    if (!prefillStatus && m.prefilling.length > 0) {
       const p = m.prefilling[0];
-      currentTokens = `${p.processed ?? 0} tokens`;
-      currentTps = `${p.speed ?? 0} tps`;
-      return;
+      prefillStatus = {
+        model: m.id,
+        tokens: `${p.processed ?? 0} tokens`,
+        tps: `${p.speed ?? 0} tps`,
+      };
     }
-    if (m.generating.length > 0) {
-      currentModel = m.id;
+    if (!generatingStatus && m.generating.length > 0) {
       const g = m.generating[0];
-      currentTokens = `${g.generated_tokens ?? 0} tokens`;
-      currentTps = `${g.tokens_per_second ?? 0} tps`;
-      return;
-    }
-    if (m.waiting.length > 0) {
-      currentModel = m.id;
-      currentTokens = `waiting #${m.waiting[0].queue_position}`;
-      currentTps = 'waiting';
-      return;
+      generatingStatus = {
+        model: m.id,
+        tokens: `${g.generated_tokens ?? 0} tokens`,
+        tps: `${g.tokens_per_second ?? 0} tps`,
+      };
     }
   }
+}
+
+function createColumn(title: string, status: StatusInfo): HTMLDivElement {
+  const col = document.createElement('div');
+  col.className = 'column';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'column-title';
+  titleEl.innerText = title;
+  col.append(titleEl);
+
+  const modelEl = document.createElement('div');
+  modelEl.className = 'column-model';
+  modelEl.innerText = status.model;
+  col.append(modelEl);
+
+  const tokensEl = document.createElement('div');
+  tokensEl.className = 'column-body';
+  tokensEl.innerText = status.tokens;
+  col.append(tokensEl);
+
+  const tpsEl = document.createElement('div');
+  tpsEl.className = 'column-meta';
+  tpsEl.innerText = `@ ${status.tps}`;
+  col.append(tpsEl);
+
+  return col;
 }
 
 function render(snapshot: Snapshot): void {
@@ -108,16 +139,18 @@ function render(snapshot: Snapshot): void {
   badge.innerText = snapshot.omlx.authenticated ? 'live' : 'offline';
   row.append(badge);
 
-  const text = document.createElement('span');
-  text.className = 'text';
-  text.innerText = `${currentModel}: ${currentTokens}`;
-  row.append(text);
+  const colPrefill = createColumn('Prefill', prefillStatus || {
+    model: 'oMLX',
+    tokens: 'Idle',
+    tps: 'Idle',
+  });
+  const colGenerating = createColumn('Generate', generatingStatus || {
+    model: 'oMLX',
+    tokens: 'Idle',
+    tps: 'Idle',
+  });
 
-  const meta = document.createElement('span');
-  meta.className = 'muted';
-  meta.innerText = `@ ${currentTps}`;
-  row.append(meta);
-
+  row.append(colPrefill, colGenerating);
   root.append(row);
 }
 
@@ -133,12 +166,15 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .row { display: flex; align-items: center; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 12px; }
   .badge { font-size: 10px; padding: 0 4px; border-radius: 4px; line-height: 14px; }
   .badge.success { background: color-mix(in srgb, var(--oc-success) 16%, transparent); color: var(--oc-success); }
   .badge.muted { background: color-mix(in srgb, var(--oc-fg) 8%, transparent); color: var(--oc-muted); }
-  .text { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .muted { color: var(--oc-muted); }
+  .column { display: flex; flex-direction: column; gap: 2px; }
+  .column-title { font-size: 10px; color: var(--oc-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .column-model { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .column-body { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .column-meta { font-size: 10px; color: var(--oc-muted); }
 `;
 document.head.append(style);
 
