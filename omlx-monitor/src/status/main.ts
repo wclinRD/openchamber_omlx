@@ -1,6 +1,5 @@
 // oMLX Monitor Status Section UI
-import { type HostClient, connectHost } from '@openchamber/sdk';
-import { HostRequestError, type HostStatus } from '@openchamber/sdk';
+import { connectHost } from '@openchamber/sdk';
 
 import { PollFailure, FAILURE_TEXT, startPolling } from '../shared/client.ts';
 import { applyHostReady } from '@openchamber/sdk/ui';
@@ -74,6 +73,25 @@ let prefillStatus: StatusInfo | null = null;
 let generatingStatus: StatusInfo | null = null;
 let currentStatus: Snapshot | null = null;
 
+function currentModel(): string {
+  if (prefillStatus?.model) return prefillStatus.model;
+  if (generatingStatus?.model) return generatingStatus.model;
+  if (!currentStatus) return 'Mirage';
+  const models = currentStatus!.omlx.active_models ?? [];
+  if (models.length > 0) return models[0]!.id;
+  return 'Mirage';
+}
+
+function currentPrefillText(): string {
+  if (prefillStatus) return `${prefillStatus.tokens} @ ${prefillStatus.tps}`;
+  return 'Idle @ Idle';
+}
+
+function currentGenerateText(): string {
+  if (generatingStatus) return `${generatingStatus.tokens} @ ${generatingStatus.tps}`;
+  return 'Idle @ Idle';
+}
+
 function refreshStatus(snapshot: Snapshot): void {
   currentStatus = snapshot;
   const modelStatuses = snapshot.omlx.active_models;
@@ -83,6 +101,7 @@ function refreshStatus(snapshot: Snapshot): void {
   for (const m of modelStatuses) {
     if (!prefillStatus && m.prefilling.length > 0) {
       const p = m.prefilling[0];
+      if (!p) continue;
       prefillStatus = {
         model: m.id,
         tokens: `${p.processed ?? 0} tokens`,
@@ -91,6 +110,7 @@ function refreshStatus(snapshot: Snapshot): void {
     }
     if (!generatingStatus && m.generating.length > 0) {
       const g = m.generating[0];
+      if (!g) continue;
       generatingStatus = {
         model: m.id,
         tokens: `${g.generated_tokens ?? 0} tokens`,
@@ -100,81 +120,68 @@ function refreshStatus(snapshot: Snapshot): void {
   }
 }
 
-function createColumn(title: string, status: StatusInfo): HTMLDivElement {
-  const col = document.createElement('div');
-  col.className = 'column';
-
-  const titleEl = document.createElement('div');
-  titleEl.className = 'column-title';
-  titleEl.innerText = title;
-  col.append(titleEl);
-
-  const modelEl = document.createElement('div');
-  modelEl.className = 'column-model';
-  modelEl.innerText = status.model;
-  col.append(modelEl);
-
-  const tokensEl = document.createElement('div');
-  tokensEl.className = 'column-body';
-  tokensEl.innerText = status.tokens;
-  col.append(tokensEl);
-
-  const tpsEl = document.createElement('div');
-  tpsEl.className = 'column-meta';
-  tpsEl.innerText = `@ ${status.tps}`;
-  col.append(tpsEl);
-
-  return col;
-}
-
 function render(snapshot: Snapshot): void {
-  root.innerHTML = '';
-  const row = document.createElement('div');
-  row.className = 'row';
+  root!.innerHTML = '';
 
-  const badge = document.createElement('span');
-  badge.className = 'badge';
-  if (snapshot.omlx.authenticated) badge.className += ' success';
-  else badge.className += ' muted';
-  badge.innerText = snapshot.omlx.authenticated ? 'live' : 'offline';
-  row.append(badge);
+  const rowStatus = document.createElement('div');
+  rowStatus.className = 'kv-row';
+  rowStatus.innerHTML = `
+    <span class="kv-label">OMLX Status</span>
+    <span class="kv-value ${snapshot.omlx.authenticated ? 'live' : 'offline'}">
+      ${snapshot.omlx.authenticated ? 'live' : 'offline'}
+    </span>
+  `;
+  root!.append(rowStatus);
 
-  const colPrefill = createColumn('Prefill', prefillStatus || {
-    model: 'oMLX',
-    tokens: 'Idle',
-    tps: 'Idle',
-  });
-  const colGenerating = createColumn('Generate', generatingStatus || {
-    model: 'oMLX',
-    tokens: 'Idle',
-    tps: 'Idle',
-  });
+  const rowModel = document.createElement('div');
+  rowModel.className = 'kv-row';
+  rowModel.innerHTML = `
+    <span class="kv-label">Model Name</span>
+    <span class="kv-value">${currentModel()}</span>
+  `;
+  root!.append(rowModel);
 
-  row.append(colPrefill, colGenerating);
-  root.append(row);
+  const rowPrefill = document.createElement('div');
+  rowPrefill.className = 'kv-row';
+  rowPrefill.innerHTML = `
+    <span class="kv-label">PREFILL</span>
+    <span class="kv-value">${currentPrefillText()}</span>
+  `;
+  root!.append(rowPrefill);
+
+  const rowGenerate = document.createElement('div');
+  rowGenerate.className = 'kv-row';
+  rowGenerate.innerHTML = `
+    <span class="kv-label">GENERATE</span>
+    <span class="kv-value">${currentGenerateText()}</span>
+  `;
+  root!.append(rowGenerate);
 }
 
 function showFailure(failure: PollFailure): void {
-  root.innerHTML = '';
+  root!.innerHTML = '';
   const row = document.createElement('div');
   row.style.color = 'var(--oc-error)';
   row.innerText = FAILURE_TEXT[failure] ?? 'oMLX Monitor offline';
-  root.append(row);
+  root!.append(row);
 }
 
 const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .row { display: flex; align-items: center; gap: 12px; }
-  .badge { font-size: 10px; padding: 0 4px; border-radius: 4px; line-height: 14px; }
-  .badge.success { background: color-mix(in srgb, var(--oc-success) 16%, transparent); color: var(--oc-success); }
-  .badge.muted { background: color-mix(in srgb, var(--oc-fg) 8%, transparent); color: var(--oc-muted); }
-  .column { display: flex; flex-direction: column; gap: 2px; }
-  .column-title { font-size: 10px; color: var(--oc-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .column-model { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .column-body { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .column-meta { font-size: 10px; color: var(--oc-muted); }
+  .kv-row { display: flex; align-items: center; gap: 12px; margin-bottom: 2px; }
+  .kv-label {
+    width: 100px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--oc-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .kv-value { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv-value.live { color: var(--oc-success); }
+  .kv-value.offline { color: var(--oc-error); }
 `;
 document.head.append(style);
 
