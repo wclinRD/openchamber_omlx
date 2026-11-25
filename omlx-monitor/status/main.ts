@@ -156,7 +156,7 @@ function createPrefillContent(): HTMLDivElement {
 function createGenerateContent(): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'progress-generate';
-  div.textContent = generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle @ Idle';
+  div.textContent = generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle';
   return div;
 }
 
