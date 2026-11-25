@@ -1,62 +1,10 @@
 // oMLX Monitor Panel UI
-import { createClient } from '@openchamber/sdk';
+import { connectHost } from '@openchamber/sdk';
+import { applyHostReady } from '@openchamber/sdk/ui';
 
-interface OmlxRequestStatus {
-  request_id: string;
-  elapsed_seconds: number | null;
-  processed: number | null;
-  total: number | null;
-  generated_tokens: number | null;
-  tokens_per_second: number | null;
-  speed: number | null;
-  eta: number | null;
-}
+import { startPolling, type PollFailure, type Snapshot, type OmlxModelStatus } from '../src/shared/client.ts';
 
-interface OmlxWaitingStatus {
-  request_id: string;
-  queue_position: number;
-  elapsed_seconds: number;
-  prompt_tokens: number;
-}
-
-interface OmlxModelStatus {
-  id: string;
-  loaded: boolean;
-  state: 'loaded' | 'unloaded' | 'loading' | 'error';
-  memory_used: number;
-  prefilling: OmlxRequestStatus[];
-  generating: OmlxRequestStatus[];
-  waiting: OmlxWaitingStatus[];
-  total_active_requests: number;
-  total_waiting_requests: number;
-}
-
-interface OmlxSnapshotSummary {
-  total_prefilling: number;
-  total_generating: number;
-  total_waiting: number;
-  total_active_requests: number;
-  total_waiting_requests: number;
-  models_loaded: number;
-}
-
-interface OmlxServerStatus {
-  host: string;
-  port: number;
-  authenticated: boolean;
-  active_models: OmlxModelStatus[];
-  summary: OmlxSnapshotSummary;
-}
-
-interface Snapshot {
-  at: number;
-  intervalMs: number;
-  omlx: OmlxServerStatus;
-  history: unknown[];
-  warnings: { code: string; message: string }[];
-}
-
-const client = createClient({ serviceId: 'omlx-monitor' });
+const host = connectHost();
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
@@ -97,7 +45,7 @@ function statusBadge(state: string): string {
   return `oc-sdk-badge ${base}`;
 }
 
-function progressPercent(req: OmlxRequestStatus): number | null {
+function progressPercent(req: import('../src/shared/client.ts').OmlxRequestStatus): number | null {
   if (req.processed === null || req.total === null || req.total === 0) return null;
   return Math.min(100, Math.round((req.processed / req.total) * 100));
 }
@@ -207,71 +155,71 @@ function modelCard(m: OmlxModelStatus): HTMLElement {
   return card;
 }
 
-async function update() {
-  try {
-    const snapshot = await client.fetch<Snapshot>('/snapshot');
-    const { omlx, warnings } = snapshot;
+function render(snapshot: Snapshot): void {
+  root.innerHTML = '';
 
-    root.innerHTML = '';
-
-    if (warnings.length > 0) {
-      const banner = document.createElement('div');
-      banner.className = 'banner';
-      banner.innerText = warnings.map((w) => w.message).join('; ');
-      root.append(banner);
-    }
-
-    const head = document.createElement('div');
-    head.className = 'head';
-    head.append(
-      document.createElement('span').className = 'live'.concat(!omlx.authenticated ? ' stale' : ''),
-      document.createElement('span').className = 'grow',
-      document.createElement('span').className = 'big'.concat(' num'),
-      document.createElement('span').innerText = `${omlx.summary.models_loaded} models`,
-      document.createElement('span').innerText = `Live`
-    );
-    root.append(head);
-
-    const summaryGrid = document.createElement('div');
-    summaryGrid.className = 'grid';
-
-    const stat = (label: string, value: string) => {
-      const card = document.createElement('div');
-      card.className = 'card';
-      const l = document.createElement('div');
-      l.className = 'card-title';
-      l.innerText = label;
-      const v = document.createElement('div');
-      v.className = 'big'.concat(' num');
-      v.innerText = value;
-      card.append(l, v);
-      return card;
-    };
-
-    summaryGrid.append(
-      stat('Active', String(omlx.summary.total_active_requests)),
-      stat('Waiting', String(omlx.summary.total_waiting_requests)),
-      stat('Prefill', String(omlx.summary.total_prefilling)),
-      stat('Generate', String(omlx.summary.total_generating))
-    );
-    root.append(summaryGrid);
-
-    const modelsTitle = document.createElement('h2');
-    modelsTitle.innerText = `Models (${omlx.active_models.length})`;
-    root.append(modelsTitle);
-
-    for (const model of omlx.active_models) {
-      root.append(modelCard(model));
-    }
-
-    const footer = document.createElement('div');
-    footer.className = 'footer';
-    footer.innerText = `Updated every ${snapshot.intervalMs} ms`;
-    root.append(footer);
-  } catch (err) {
-    root.innerHTML = `<div class="banner">Failed to connect to oMLX Monitor service.<br>${err instanceof Error ? err.message : String(err)}</div>`;
+  if (snapshot.warnings.length > 0) {
+    const banner = document.createElement('div');
+    banner.className = 'banner';
+    banner.innerText = snapshot.warnings.map((w) => w.message).join('; ');
+    root.append(banner);
   }
+
+  const head = document.createElement('div');
+  head.className = 'head';
+  head.append(
+    document.createElement('span').className = 'live'.concat(!snapshot.omlx.authenticated ? ' stale' : ''),
+    document.createElement('span').className = 'grow',
+    document.createElement('span').className = 'big'.concat(' num'),
+    document.createElement('span').innerText = `${snapshot.omlx.summary.models_loaded} models`,
+    document.createElement('span').innerText = `Live`
+  );
+  root.append(head);
+
+  const summaryGrid = document.createElement('div');
+  summaryGrid.className = 'grid';
+
+  const stat = (label: string, value: string) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const l = document.createElement('div');
+    l.className = 'card-title';
+    l.innerText = label;
+    const v = document.createElement('div');
+    v.className = 'big'.concat(' num');
+    v.innerText = value;
+    card.append(l, v);
+    return card;
+  };
+
+  summaryGrid.append(
+    stat('Active', String(snapshot.omlx.summary.total_active_requests)),
+    stat('Waiting', String(snapshot.omlx.summary.total_waiting_requests)),
+    stat('Prefill', String(snapshot.omlx.summary.total_prefilling)),
+    stat('Generate', String(snapshot.omlx.summary.total_generating))
+  );
+  root.append(summaryGrid);
+
+  const modelsTitle = document.createElement('h2');
+  modelsTitle.innerText = `Models (${snapshot.omlx.active_models.length})`;
+  root.append(modelsTitle);
+
+  for (const model of snapshot.omlx.active_models) {
+    root.append(modelCard(model));
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'footer';
+  footer.innerText = `Updated every ${snapshot.intervalMs} ms`;
+  root.append(footer);
 }
 
-update();
-setInterval(update, 2_000);
+function showFailure(failure: PollFailure): void {
+  root.innerHTML = `<div class="banner">${'oMLX monitor ' + (failure === 'service-failed' ? 'stopped' : failure === 'needs-approval' ? 'permission denied' : failure === 'paused' ? 'paused' : failure === 'bad-answer' ? 'unexpected response' : 'unreachable')}</div>`;
+}
+
+host.onReady(async (context) => {
+  applyHostReady(context, document.documentElement);
+  const pollController = startPolling(host, root, render, showFailure);
+  void pollController.refresh();
+});

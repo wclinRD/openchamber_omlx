@@ -24,24 +24,38 @@ buildProcess.on('close', (code) => {
 
   console.log('Built service to:', outPath);
 
-  // Also copy panel and status HTML/JS as-is for the extension if they exist.
-  const panelDir = resolve(projectRoot, 'panel');
-  const statusDir = resolve(projectRoot, 'status');
-  const outPanelDir = resolve(outDir, '../panel');
-  const outStatusDir = resolve(outDir, '../status');
+  // Build panel and status directly from root so they use the latest TypeScript source.
+  const panelOut = resolve(projectRoot, 'panel/main.js');
+  const statusOut = resolve(projectRoot, 'status/main.js');
 
-  if (existsSync(resolve(panelDir, 'index.html'))) {
-    copyFileSync(resolve(panelDir, 'index.html'), resolve(outPanelDir, 'index.html'));
-  }
-  if (existsSync(resolve(panelDir, 'main.ts'))) {
-    copyFileSync(resolve(panelDir, 'main.ts'), resolve(outPanelDir, 'main.js'));
-  }
-  if (existsSync(resolve(statusDir, 'index.html'))) {
-    copyFileSync(resolve(statusDir, 'index.html'), resolve(outStatusDir, 'index.html'));
-  }
-  if (existsSync(resolve(statusDir, 'main.ts'))) {
-    copyFileSync(resolve(statusDir, 'main.ts'), resolve(outStatusDir, 'main.js'));
-  }
+  // Bundle panel/main.ts -> panel/main.js
+  const panelProcess = spawn('bun', ['build', '--entrypoints', 'panel/main.ts', '--outfile', 'panel/main.js', '--minify', '--target', 'bun', '--external', 'http'], {
+    cwd: projectRoot,
+  });
+  panelProcess.stdout.on('data', (data) => process.stdout.write(data));
+  panelProcess.stderr.on('data', (data) => process.stderr.write(data));
+  panelProcess.on('close', (code) => {
+    if (code !== 0) {
+      console.error('Panel build failed with code', code);
+      process.exit(1);
+    }
+    console.log('Built panel to:', panelOut);
+
+    // Bundle status/main.ts -> status/main.js
+    const statusProcess = spawn('bun', ['build', '--entrypoints', 'status/main.ts', '--outfile', 'status/main.js', '--minify', '--target', 'bun', '--external', 'http'], {
+      cwd: projectRoot,
+    });
+    statusProcess.stdout.on('data', (data) => process.stdout.write(data));
+    statusProcess.stderr.on('data', (data) => process.stderr.write(data));
+    statusProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Status build failed with code', code);
+        process.exit(1);
+      }
+      console.log('Built status to:', statusOut);
+      console.log('Copied panel and status resources if present.');
+    });
+  });
 
   console.log('Copied panel and status resources if present.');
 });

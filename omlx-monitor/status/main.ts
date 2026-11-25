@@ -1,5 +1,8 @@
 // oMLX Monitor Status Section UI
-import { createClient } from '@openchamber/sdk';
+import { connectHost } from '@openchamber/sdk';
+import { applyHostReady } from '@openchamber/sdk/ui';
+
+import { PollFailure, FAILURE_TEXT, startPolling } from '../src/shared/client.ts';
 
 interface OmlxRequestStatus {
   request_id: string;
@@ -56,16 +59,18 @@ interface Snapshot {
   warnings: { code: string; message: string }[];
 }
 
-const client = createClient({ serviceId: 'omlx-monitor' });
+const host = connectHost();
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
 let currentModel = 'oMLX';
 let currentTokens = '0 tokens';
 let currentTps = 'offline';
+let currentStatus: Snapshot | null = null;
 
-function refreshStatus(status: Snapshot) {
-  const modelStatuses = status.omlx.active_models;
+function refreshStatus(snapshot: Snapshot) {
+  currentStatus = snapshot;
+  const modelStatuses = snapshot.omlx.active_models;
   for (const m of modelStatuses) {
     if (m.prefilling.length > 0) {
       currentModel = m.id;
@@ -90,19 +95,38 @@ function refreshStatus(status: Snapshot) {
   }
 }
 
-let currentStatus: Snapshot = {
-  at: Date.now(),
-  intervalMs: 2000,
-  omlx: {
-    host: '127.0.0.1',
-    port: 8000,
-    authenticated: false,
-    active_models: [],
-    summary: { total_prefilling: 0, total_generating: 0, total_waiting: 0, total_active_requests: 0, total_waiting_requests: 0, models_loaded: 0 },
-  },
-  history: [],
-  warnings: [],
-};
+function render(snapshot: Snapshot): void {
+  root.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'row';
+
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  if (snapshot.omlx.authenticated) badge.className += ' success';
+  else badge.className += ' muted';
+  badge.innerText = snapshot.omlx.authenticated ? 'live' : 'offline';
+  row.append(badge);
+
+  const text = document.createElement('span');
+  text.className = 'text';
+  text.innerText = `${currentModel}: ${currentTokens}`;
+  row.append(text);
+
+  const meta = document.createElement('span');
+  meta.className = 'muted';
+  meta.innerText = `@ ${currentTps}`;
+  row.append(meta);
+
+  root.append(row);
+}
+
+function showFailure(failure: PollFailure): void {
+  root.innerHTML = '';
+  const row = document.createElement('div');
+  row.style.color = 'var(--oc-error)';
+  row.innerText = FAILURE_TEXT[failure] ?? 'oMLX Monitor offline';
+  root.append(row);
+}
 
 const style = document.createElement('style');
 style.textContent = `
@@ -117,47 +141,13 @@ style.textContent = `
 `;
 document.head.append(style);
 
-async function update() {
-  try {
-    const snapshot = await client.fetch<Snapshot>('/snapshot');
-    currentStatus = snapshot;
+host.onReady(async (context) => {
+  applyHostReady(context, document.documentElement);
+  const { startPolling } = await import('../src/shared/client.ts');
+  const pollController = startPolling(host, root, (snapshot) => {
     refreshStatus(snapshot);
+    render(snapshot);
+  }, showFailure);
 
-    root.innerHTML = '';
-    const row = document.createElement('div');
-    row.className = 'row';
-
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    if (snapshot.omlx.authenticated) badge.className += ' success';
-    else badge.className += ' muted';
-    badge.innerText = snapshot.omlx.authenticated ? 'live' : 'offline';
-    row.append(badge);
-
-    const text = document.createElement('span');
-    text.className = 'text';
-    text.innerText = `${currentModel}: ${currentTokens}`;
-    row.append(text);
-
-    const meta = document.createElement('span');
-    meta.className = 'muted';
-    meta.innerText = `@ ${currentTps}`;
-    row.append(meta);
-
-    root.append(row);
-  } catch {
-    refreshStatus({
-      ...currentStatus,
-      omlx: { ...currentStatus.omlx, authenticated: false },
-    });
-    root.innerHTML = '';
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.style.color = 'var(--oc-error)';
-    row.innerText = 'oMLX Monitor offline';
-    root.append(row);
-  }
-}
-
-update();
-setInterval(update, 2_000);
+  void pollController.refresh();
+});
