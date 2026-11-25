@@ -233,12 +233,14 @@ style.textContent = `
 
   .progress-container {
     flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 10px;
   }
   .progress-track {
     flex: 1;
+    min-width: 0;
     height: 8px;
     background: color-mix(in srgb, var(--oc-fg) 10%, transparent);
     border-radius: 4px;
@@ -256,10 +258,11 @@ style.textContent = `
     font-size: 11px;
     color: var(--oc-muted);
     white-space: nowrap;
-    margin-left: 4px;
+    flex: none;
+    margin-left: 8px;
   }
   .progress-generate {
-    flex: 1;
+    flex: none;
     font-size: 12px;
     font-weight: 500;
     text-align: right;
