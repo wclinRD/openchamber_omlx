@@ -352,5 +352,6 @@ ${_r}`;ke();eo();var Sr=Xt(),Y=document.getElementById("root");if(!Y)throw Error
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-left: auto;
   }
 `;document.head.append(Tr);Sr.onReady(async(e)=>{$t(e,document.documentElement);let{startPolling:r}=await Promise.resolve().then(() => (eo(),Er));r(Sr,Y,(c)=>{jr(c),Yr(c)},Qr).refresh()});

@@ -269,6 +269,7 @@ style.textContent = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-left: auto;
   }
 `;
 document.head.append(style);
