@@ -180,18 +180,18 @@ function render(snapshot: Snapshot): void {
 
   modelValue.append(statusValue);
 
-  rowModel.append(el('span', 'what', 'MODEL NAME'), el('div', 'meter-empty'), modelValue);
+  rowModel.append(el('span', 'what', 'Model'), el('div', 'meter-empty'), modelValue);
   root!.append(rowModel);
 
   const rowPrefill = document.createElement('div');
   rowPrefill.className = 'line';
   const prefTrack = createPrefillMeter();
-  rowPrefill.append(el('span', 'what', 'PREFILL'), prefTrack.meter, prefTrack.text);
+  rowPrefill.append(el('span', 'what', 'Prefill'), prefTrack.meter, prefTrack.text);
   root!.append(rowPrefill);
 
   const rowGenerate = document.createElement('div');
   rowGenerate.className = 'line';
-  rowGenerate.append(el('span', 'what', 'GENERATE'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
+  rowGenerate.append(el('span', 'what', 'Generate'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
   root!.append(rowGenerate);
 }
 
