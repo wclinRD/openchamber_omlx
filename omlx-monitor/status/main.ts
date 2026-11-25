@@ -133,13 +133,14 @@ function createPrefillContent(): HTMLDivElement {
     return container;
   }
 
-  const bar = document.createElement('div');
-  bar.className = 'progress-bar';
+  const track = document.createElement('div');
+  track.className = 'progress-track';
   const fill = document.createElement('div');
   fill.className = 'progress-fill';
   fill.style.width = `${prefillStatus.percent ?? 0}%`;
-  bar.append(fill);
-  container.append(bar);
+  fill.style.setProperty('--pct', `${prefillStatus.percent ?? 0}%`);
+  track.append(fill);
+  container.append(track);
 
   const text = document.createElement('span');
   text.className = 'progress-text';
@@ -231,27 +232,28 @@ style.textContent = `
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 8px;
-    text-align: right;
+    gap: 10px;
   }
-  .progress-bar {
+  .progress-track {
     flex: 1;
-    height: 6px;
-    background: color-mix(in srgb, var(--oc-fg) 12%, transparent);
-    border-radius: 3px;
+    height: 8px;
+    background: color-mix(in srgb, var(--oc-fg) 10%, transparent);
+    border-radius: 4px;
+    position: relative;
     overflow: hidden;
-    min-width: 60px;
   }
   .progress-fill {
-    height: 100%;
+    position: absolute;
+    inset: 0;
     background: var(--oc-success);
-    border-radius: 3px;
+    border-radius: 4px;
     transition: width 0.2s ease;
   }
   .progress-text {
     font-size: 11px;
     color: var(--oc-muted);
     white-space: nowrap;
+    margin-left: 4px;
   }
   .progress-generate {
     flex: 1;
