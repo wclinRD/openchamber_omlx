@@ -5,14 +5,16 @@
 // with no request for IDLE_STOP_MS the loop stops, so a closed panel costs nothing.
 
 import http from 'node:http';
+import fs from 'node:fs';
 import type { Snapshot } from '../shared/snapshot.ts';
 import { createOmlxApi, type OmlxApi } from './omlx-api.ts';
 import { OmlxSampler } from './omlx-sampler.ts';
 import { OmlxSseManager } from './omlx-events.ts';
 
 const HOST = '127.0.0.1';
-const PORT = 12345; // open port for extension service; OpenChamber routes /omlx-monitor/*
+const PORT = process.env.OPENCHAMBER_SERVICE_PORT ? Number(process.env.OPENCHAMBER_SERVICE_PORT) : 12345; // fallback for local manual run
 const IDLE_STOP_MS = 20_000;
+const SERVICE_TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN || null;
 
 const api = await createOmlxApi();
 const sampler = new OmlxSampler(api);
@@ -128,6 +130,16 @@ async function handleStop(req: http.IncomingMessage, res: http.ServerResponse): 
 server = http.createServer((req, res) => {
   const path = req.url || '/';
 
+  // OpenChamber service protocol requires Authorization: Bearer token if provided.
+  const authHeader = req.headers.authorization || '';
+  if (SERVICE_TOKEN) {
+    if (authHeader !== `Bearer ${SERVICE_TOKEN}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      return;
+    }
+  }
+
   if (path === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, active_clients: hasActiveClients }));
@@ -163,6 +175,18 @@ server = http.createServer((req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`oMLX Monitor service listening on ${HOST}:${PORT}`);
+});
+
+process.on('uncaughtException', (err) => {
+  const logPath = `${process.env.HOME ?? '/tmp'}/omlx-monitor-uncaught.log`;
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] uncaughtException: ${err.stack}\n`);
+  console.error(`Unhandled error, writing to ${logPath}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const logPath = `${process.env.HOME ?? '/tmp'}/omlx-monitor-unhandled.log`;
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] unhandledRejection: ${reason}\n`);
+  console.error(`Unhandled rejection, writing to ${logPath}`);
 });
 
 // Graceful shutdown.
