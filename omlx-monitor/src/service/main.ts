@@ -21,7 +21,7 @@ const sseManager = new OmlxSseManager();
 let server: http.Server | null = null;
 let samplerPromise: Promise<void> | null = null;
 let idleTimer: NodeJS.Timeout | null = null;
-let lastSnapshot = null;
+let lastSnapshot: Snapshot | null = null;
 let hasActiveClients = false;
 
 function clearIdleTimer(): void {
@@ -61,6 +61,14 @@ function startSseResponse(req: http.IncomingMessage, res: http.ServerResponse): 
   hasActiveClients = true;
   startSampling();
   restartIdleTimer();
+
+  // Push initial snapshot state immediately so clients know current active requests.
+  sampler.snapshot().then((s) => {
+    sseManager.pushSnapshotEvent(lastSnapshot, s);
+    lastSnapshot = s;
+  }).catch(() => {
+    // ignore initial snapshot failure; subsequent polling will recover
+  });
 }
 
 async function handleSnapshot(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -75,6 +83,11 @@ async function handleSnapshot(req: http.IncomingMessage, res: http.ServerRespons
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
     return;
+  }
+
+  if (hasActiveClients) {
+    sseManager.pushSnapshotEvent(lastSnapshot, snapshot);
+    lastSnapshot = snapshot;
   }
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
