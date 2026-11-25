@@ -1,5 +1,28 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS icons
+Icon
+
+# macOS cache
+._*
+
+# macOS crash reports
+*.crash
+
+# macOS swap files
+*.swp
+
+# macOS temporary files
+tmp/
+*.tmp
+
+# Other common ignores
 node_modules/
-.bun/
-.vscode/
 *.log
 .env
+
+# Local environment configuration
+config.local.json
