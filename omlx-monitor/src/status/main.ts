@@ -170,16 +170,24 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .kv-row { display: flex; align-items: center; gap: 12px; margin-bottom: 2px; }
+  .kv-row { display: flex; align-items: center; justify-content: space-between; }
   .kv-label {
-    width: 100px;
     flex-shrink: 0;
     font-size: 10px;
     color: var(--oc-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    text-align: left;
   }
-  .kv-value { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kv-value {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .kv-value.live { color: var(--oc-success); }
   .kv-value.offline { color: var(--oc-error); }
 `;
