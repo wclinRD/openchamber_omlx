@@ -129,10 +129,19 @@ function createPrefillContent(): HTMLDivElement {
   container.className = 'progress-container';
 
   if (!prefillStatus) {
-    const idle = document.createElement('div');
-    idle.className = 'progress-generate';
-    idle.textContent = 'Idle';
-    container.append(idle);
+    const track = document.createElement('div');
+    track.className = 'progress-track';
+    const fill = document.createElement('div');
+    fill.className = 'progress-fill';
+    fill.style.width = '0%';
+    fill.style.setProperty('--pct', '0%');
+    track.append(fill);
+    container.append(track);
+
+    const text = document.createElement('span');
+    text.className = 'progress-text';
+    text.textContent = 'Idle';
+    container.append(text);
     return container;
   }
 
