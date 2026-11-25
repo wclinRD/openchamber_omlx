@@ -63,6 +63,7 @@ interface StatusInfo {
   model: string;
   tokens: string;
   tps: string;
+  percent: number | null;
 }
 
 const host = connectHost();
@@ -102,10 +103,12 @@ function refreshStatus(snapshot: Snapshot): void {
     if (!prefillStatus && m.prefilling.length > 0) {
       const p = m.prefilling[0];
       if (!p) continue;
+      const percent = p.total != null && p.total > 0 ? Math.round((p.processed ?? 0) / p.total * 100) : null;
       prefillStatus = {
         model: m.id,
         tokens: `${p.processed ?? 0} tokens`,
         tps: `${p.speed != null ? p.speed.toFixed(2) : '0'} tps`,
+        percent,
       };
     }
     if (!generatingStatus && m.generating.length > 0) {
@@ -115,9 +118,42 @@ function refreshStatus(snapshot: Snapshot): void {
         model: m.id,
         tokens: `${g.generated_tokens ?? 0} tokens`,
         tps: `${g.tokens_per_second != null ? g.tokens_per_second.toFixed(2) : '0'} tps`,
+        percent: null,
       };
     }
   }
+}
+
+function createPrefillContent(): HTMLDivElement {
+  const container = document.createElement('div');
+  container.className = 'progress-container';
+
+  if (!prefillStatus) {
+    container.textContent = 'Idle';
+    return container;
+  }
+
+  const bar = document.createElement('div');
+  bar.className = 'progress-bar';
+  const fill = document.createElement('div');
+  fill.className = 'progress-fill';
+  fill.style.width = `${prefillStatus.percent ?? 0}%`;
+  bar.append(fill);
+  container.append(bar);
+
+  const text = document.createElement('span');
+  text.className = 'progress-text';
+  text.textContent = `${prefillStatus.percent ?? '-'}% @ ${prefillStatus.tps}`;
+  container.append(text);
+
+  return container;
+}
+
+function createGenerateContent(): HTMLDivElement {
+  const div = document.createElement('div');
+  div.className = 'progress-generate';
+  div.textContent = generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle @ Idle';
+  return div;
 }
 
 function render(snapshot: Snapshot): void {
@@ -145,16 +181,16 @@ function render(snapshot: Snapshot): void {
   rowPrefill.className = 'kv-row';
   rowPrefill.innerHTML = `
     <span class="kv-label">PREFILL</span>
-    <span class="kv-value">${currentPrefillText()}</span>
   `;
+  rowPrefill.append(createPrefillContent());
   root!.append(rowPrefill);
 
   const rowGenerate = document.createElement('div');
   rowGenerate.className = 'kv-row';
   rowGenerate.innerHTML = `
     <span class="kv-label">GENERATE</span>
-    <span class="kv-value">${currentGenerateText()}</span>
   `;
+  rowGenerate.append(createGenerateContent());
   root!.append(rowGenerate);
 }
 
@@ -190,6 +226,42 @@ style.textContent = `
   }
   .kv-value.live { color: var(--oc-success); }
   .kv-value.offline { color: var(--oc-error); }
+
+  .progress-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: right;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: color-mix(in srgb, var(--oc-fg) 12%, transparent);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 60px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--oc-success);
+    border-radius: 3px;
+    transition: width 0.2s ease;
+  }
+  .progress-text {
+    font-size: 11px;
+    color: var(--oc-muted);
+    white-space: nowrap;
+  }
+  .progress-generate {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 `;
 document.head.append(style);
 
