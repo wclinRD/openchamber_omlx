@@ -163,6 +163,8 @@ export interface OmlxWaitingStatus {
 └── service/main.js (build 後)
 ```
 
+> 注意：`status/main.ts` 是 Status Panel 的唯一 TypeScript 來源，由 `scripts/build.ts` 編譯為 `status/main.js`。過去曾存在 `src/status/main.ts`，但與 `status/main.ts` 重複且未被使用，已移除以維持單一來源之一致性。`service/main.ts` 為 Service 來源，編譯為 `service/main.js`。
+
 ### 4.2 核心模組說明
 
 | 檔案 | 職責 |
