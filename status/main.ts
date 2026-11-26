@@ -173,13 +173,6 @@ function render(snapshot: Snapshot): void {
   modelValue.className = 'value';
   modelValue.textContent = currentModel();
 
-  const statusValue = document.createElement('span');
-  statusValue.className = 'value status';
-  statusValue.textContent = snapshot.omlx.authenticated ? 'live' : 'offline';
-  if (snapshot.omlx.authenticated) statusValue.style.color = 'var(--oc-success)';
-
-  modelValue.append(statusValue);
-
   rowModel.append(el('span', 'what', 'Model'), el('div', 'meter-empty'), modelValue);
   root!.append(rowModel);
 
@@ -210,7 +203,6 @@ style.textContent = `
   .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
   .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .line .value .status { margin-left: 8px; }
   .line .value.num { font-variant-numeric: tabular-nums; }
   .meter { position: relative; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--oc-fg) 8%, transparent); overflow: hidden; }
   .meter > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width .4s ease; }
