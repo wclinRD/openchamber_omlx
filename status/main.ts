@@ -237,7 +237,9 @@ function render(snapshot: Snapshot): void {
 
     const memoryText = document.createElement('span');
     memoryText.className = 'value num';
-    memoryText.textContent = `${percent}% ${memoryStatus.current} / ${memoryStatus.soft}`;
+    const currentNoGb = memoryStatus.current.replace(/GB\s*$/, '');
+    const softNoGb = memoryStatus.soft.replace(/GB\s*$/, '');
+    memoryText.textContent = `${percent}% ${currentNoGb} / ${softNoGb} GB`;
 
     rowMemory.append(el('span', 'what', 'Pressure'), memoryMeter, memoryText);
     root!.append(rowMemory);
