@@ -86,7 +86,9 @@ interface StatusInfo {
 
 interface MemoryStatusInfo {
   current: string;
+  current_bytes: number;
   soft: string;
+  soft_bytes: number;
   hard: string;
   level: string;
 }
@@ -153,7 +155,9 @@ function refreshStatus(snapshot: Snapshot): void {
     const mp = snapshot.omlx.memory_pressure;
     memoryStatus = {
       current: mp.current_formatted,
+      current_bytes: mp.current_bytes,
       soft: mp.soft_formatted,
+      soft_bytes: mp.soft_bytes,
       hard: mp.hard_formatted,
       level: mp.pressure_level,
     };
@@ -220,13 +224,28 @@ function render(snapshot: Snapshot): void {
   if (memoryStatus) {
     const rowMemory = document.createElement('div');
     rowMemory.className = 'line';
+
+    const percent = memoryStatus.soft_bytes > 0 ? Math.min(100, Math.round((memoryStatus.current_bytes / memoryStatus.soft_bytes) * 100)) : 0;
+
+    const memoryFill = document.createElement('span');
+    memoryFill.className = 'meter-fill meter-fill-memory';
+    memoryFill.style.width = `${percent}%`;
+
+    const memoryMeter = document.createElement('div');
+    memoryMeter.className = 'meter';
+    memoryMeter.append(memoryFill);
+
     const levelBadge = memoryStatus.level === 'hard'
       ? 'oc-sdk-badge error'
       : memoryStatus.level === 'soft'
         ? 'oc-sdk-badge warning'
         : 'oc-sdk-badge success';
-    const labelValue = `Memory: ${memoryStatus.current} / ${memoryStatus.soft} soft / ${memoryStatus.hard} hard`;
-    rowMemory.append(el('span', 'what', 'Memory'), el('div', 'meter-empty'), el('span', 'value', `${labelValue} <span class="${levelBadge}">${memoryStatus.level}</span>`));
+
+    const memoryText = document.createElement('span');
+    memoryText.className = 'value num';
+    memoryText.innerHTML = `${percent}% @ ${memoryStatus.current} / ${memoryStatus.soft} <span class="${levelBadge}">${memoryStatus.level}</span>`;
+
+    rowMemory.append(el('span', 'what', 'Pressure'), memoryMeter, memoryText);
     root!.append(rowMemory);
   }
 }
@@ -251,6 +270,7 @@ style.textContent = `
   .meter > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width .4s ease; }
   .meter-empty { height: 4px; }
   .meter-fill { background: var(--oc-success); }
+  .meter-fill-memory { background: var(--oc-primary); }
 `;
 document.head.append(style);
 
