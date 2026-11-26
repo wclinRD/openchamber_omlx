@@ -138,7 +138,7 @@ export interface OmlxWaitingStatus {
 
 ### 4.1 專案位置
 
-在 `/Users/wclin/openchamber/openchamber_omlx/` 建立一個 OpenChamber extension-like 專案（與 `lmstudio_monitor` 結構相同）：
+現在整個 repo 根目錄即為 OpenChamber 擴展根目錄，已移除 `omlx-monitor/` 中間層（與 `lmstudio_monitor` 結構相同）。架構如下：
 
 ```
 /
@@ -162,6 +162,8 @@ export interface OmlxWaitingStatus {
 ├── scripts/build.ts
 └── service/main.js (build 後)
 ```
+
+> 注意：`status/main.ts` 是 Status Panel 的唯一 TypeScript 來源，由 `scripts/build.ts` 編譯為 `status/main.js`。過去曾存在 `src/status/main.ts`，但與 `status/main.ts` 重複且未被使用，已移除以維持單一來源之一致性。`service/main.ts` 為 Service 來源，編譯為 `service/main.js`。
 
 ### 4.2 核心模組說明
 

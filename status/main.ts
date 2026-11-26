@@ -166,27 +166,32 @@ function createGenerateValue(): string {
 function render(snapshot: Snapshot): void {
   root!.innerHTML = '';
 
-  const rowStatus = document.createElement('div');
-  rowStatus.className = 'line';
-  rowStatus.append(el('span', 'what', 'OMLX STATUS'), el('div', 'meter-empty'), el('span', 'value', snapshot.omlx.authenticated ? 'live' : 'offline'));
-  const statusValue = rowStatus.querySelector('.value') as HTMLElement;
-  if (snapshot.omlx.authenticated) statusValue.style.color = 'var(--oc-success)';
-  root!.append(rowStatus);
-
   const rowModel = document.createElement('div');
   rowModel.className = 'line';
-  rowModel.append(el('span', 'what', 'MODEL NAME'), el('div', 'meter-empty'), el('span', 'value', currentModel()));
+
+  const modelValue = document.createElement('span');
+  modelValue.className = 'value';
+  modelValue.textContent = currentModel();
+
+  const statusValue = document.createElement('span');
+  statusValue.className = 'value status';
+  statusValue.textContent = snapshot.omlx.authenticated ? 'live' : 'offline';
+  if (snapshot.omlx.authenticated) statusValue.style.color = 'var(--oc-success)';
+
+  modelValue.append(statusValue);
+
+  rowModel.append(el('span', 'what', 'Model'), el('div', 'meter-empty'), modelValue);
   root!.append(rowModel);
 
   const rowPrefill = document.createElement('div');
   rowPrefill.className = 'line';
   const prefTrack = createPrefillMeter();
-  rowPrefill.append(el('span', 'what', 'PREFILL'), prefTrack.meter, prefTrack.text);
+  rowPrefill.append(el('span', 'what', 'Prefill'), prefTrack.meter, prefTrack.text);
   root!.append(rowPrefill);
 
   const rowGenerate = document.createElement('div');
   rowGenerate.className = 'line';
-  rowGenerate.append(el('span', 'what', 'GENERATE'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
+  rowGenerate.append(el('span', 'what', 'Generate'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
   root!.append(rowGenerate);
 }
 
@@ -205,6 +210,7 @@ style.textContent = `
   .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
   .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .line .value .status { margin-left: 8px; }
   .line .value.num { font-variant-numeric: tabular-nums; }
   .meter { position: relative; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--oc-fg) 8%, transparent); overflow: hidden; }
   .meter > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width .4s ease; }
