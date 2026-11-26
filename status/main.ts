@@ -239,7 +239,7 @@ function render(snapshot: Snapshot): void {
     memoryText.className = 'value num';
     const currentNoGb = memoryStatus.current.replace(/GB\s*$/, '');
     const softNoGb = memoryStatus.soft.replace(/GB\s*$/, '');
-    memoryText.textContent = `${percent}% ${currentNoGb} / ${softNoGb} GB`;
+    memoryText.textContent = `${currentNoGb} / ${softNoGb} GB · ${percent}%`;
 
     rowMemory.append(el('span', 'what', 'Pressure'), memoryMeter, memoryText);
     root!.append(rowMemory);
