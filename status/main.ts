@@ -235,15 +235,9 @@ function render(snapshot: Snapshot): void {
     memoryMeter.className = 'meter';
     memoryMeter.append(memoryFill);
 
-    const levelBadge = memoryStatus.level === 'hard'
-      ? 'oc-sdk-badge error'
-      : memoryStatus.level === 'soft'
-        ? 'oc-sdk-badge warning'
-        : 'oc-sdk-badge success';
-
     const memoryText = document.createElement('span');
     memoryText.className = 'value num';
-    memoryText.innerHTML = `${percent}% @ ${memoryStatus.current} / ${memoryStatus.soft} <span class="${levelBadge}">${memoryStatus.level}</span>`;
+    memoryText.textContent = `${percent}% ${memoryStatus.current} / ${memoryStatus.soft}`;
 
     rowMemory.append(el('span', 'what', 'Pressure'), memoryMeter, memoryText);
     root!.append(rowMemory);
