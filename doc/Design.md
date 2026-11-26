@@ -138,7 +138,7 @@ export interface OmlxWaitingStatus {
 
 ### 4.1 專案位置
 
-在 `/Users/wclin/openchamber/openchamber_omlx/` 建立一個 OpenChamber extension-like 專案（與 `lmstudio_monitor` 結構相同）：
+現在整個 repo 根目錄即為 OpenChamber 擴展根目錄，已移除 `omlx-monitor/` 中間層（與 `lmstudio_monitor` 結構相同）。架構如下：
 
 ```
 /
