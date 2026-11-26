@@ -62,6 +62,16 @@ export interface OmlxServerStatus {
   authenticated: boolean;
   active_models: OmlxModelStatus[];
   summary: OmlxSnapshotSummary;
+  memory_pressure?: {
+    enabled: boolean;
+    current_bytes: number;
+    soft_bytes: number;
+    hard_bytes: number;
+    current_formatted: string;
+    soft_formatted: string;
+    hard_formatted: string;
+    pressure_level: string;
+  };
 }
 
 export interface SnapshotPoint {

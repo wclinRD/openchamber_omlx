@@ -59,6 +59,7 @@ export class OmlxSampler {
         authenticated: !this.api.authError,
         active_models: this.lastStats ? this.transformModels(rawModels) : [],
         summary,
+        memory_pressure: this.lastStats?.active_models?.memory_pressure,
       },
       history: [...this.history],
       warnings,

@@ -27,6 +27,8 @@ style.textContent = `
   .req-meta { width: 72px; font-size: 11px; text-align: right; color: var(--oc-muted); }
   .progress { height: 6px; border-radius: 999px; background: var(--oc-border); position: relative; margin: 4px 0; }
   .progress-fill { height: 100%; border-radius: 999px; background: var(--oc-primary); transform-origin: left; transition: transform .2s ease; }
+  .memory-bar { height: 8px; border-radius: 999px; background: var(--oc-border); position: relative; margin: 6px 0; }
+  .memory-fill { height: 100%; border-radius: 999px; transition: width .2s ease; }
   .empty { color: var(--oc-muted); padding: 8px 0; font-size: 11px; }
   .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
   .head .grow { flex: 1; }
@@ -199,6 +201,36 @@ function render(snapshot: Snapshot): void {
     stat('Generate', String(snapshot.omlx.summary.total_generating))
   );
   root.append(summaryGrid);
+
+  if (snapshot.omlx.memory_pressure) {
+    const mp = snapshot.omlx.memory_pressure;
+    const memoryCard = document.createElement('div');
+    memoryCard.className = 'card';
+
+    const memoryTitle = document.createElement('div');
+    memoryTitle.className = 'card-title';
+    memoryTitle.innerText = '活躍模型';
+
+    const percent = mp.soft_bytes > 0 ? Math.min(100, Math.round((mp.current_bytes / mp.soft_bytes) * 100)) : 0;
+    const fill = document.createElement('div');
+    fill.className = 'memory-bar';
+
+    const mpFill = document.createElement('div');
+    mpFill.className = 'memory-fill';
+    mpFill.style.width = `${percent}%`;
+
+    let tone = 'success';
+    if (mp.pressure_level === 'soft') tone = 'warning';
+    if (mp.pressure_level === 'hard') tone = 'error';
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'display: flex; justify-content: space-between; font-size: 11px; color: var(--oc-muted); margin-top: 4px;';
+    meta.innerHTML = `<span>${mp.current_formatted} / ${mp.soft_formatted} soft / ${mp.hard_formatted} hard</span><span class="oc-sdk-badge ${tone}">${mp.pressure_level}</span>`;
+
+    fill.append(mpFill);
+    memoryCard.append(memoryTitle, fill, meta);
+    root.append(memoryCard);
+  }
 
   const modelsTitle = document.createElement('h2');
   modelsTitle.innerText = `Models (${snapshot.omlx.active_models.length})`;

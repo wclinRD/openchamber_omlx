@@ -72,6 +72,7 @@ Active Model Data -> transformed -> Snapshot / Events
    - `omlx.host`, `omlx.port`, `omlx.authenticated`
    - `omlx.active_models`: `[ { id, loaded, state, memory_used, prefilling, generating, waiting, total_active_requests, total_waiting_requests } ]`
    - `omlx.summary`: `{ total_prefilling, total_generating, total_waiting, total_active_requests, total_waiting_requests }`
+   - `omlx.memory_pressure`: `{ enabled, current_bytes, soft_bytes, hard_bytes, current_formatted, soft_formatted, hard_formatted, pressure_level }`（oMLX 服務端提供的記憶體壓力狀態）
    - `history`: 歷史數據點（過去 90 次）
    - `warnings`: 若 API unreachable、未設定 key、401/503
 

@@ -57,6 +57,16 @@ interface OmlxServerStatus {
   authenticated: boolean;
   active_models: OmlxModelStatus[];
   summary: OmlxSnapshotSummary;
+  memory_pressure?: {
+    enabled: boolean;
+    current_bytes: number;
+    soft_bytes: number;
+    hard_bytes: number;
+    current_formatted: string;
+    soft_formatted: string;
+    hard_formatted: string;
+    pressure_level: string;
+  };
 }
 
 interface Snapshot {
@@ -74,12 +84,20 @@ interface StatusInfo {
   percent: number | null;
 }
 
+interface MemoryStatusInfo {
+  current: string;
+  soft: string;
+  hard: string;
+  level: string;
+}
+
 const host = connectHost();
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
 let prefillStatus: StatusInfo | null = null;
 let generatingStatus: StatusInfo | null = null;
+let memoryStatus: MemoryStatusInfo | null = null;
 let currentStatus: Snapshot | null = null;
 
 function currentModel(): string {
@@ -129,6 +147,18 @@ function refreshStatus(snapshot: Snapshot): void {
         percent: null,
       };
     }
+  }
+
+  if (snapshot.omlx.memory_pressure) {
+    const mp = snapshot.omlx.memory_pressure;
+    memoryStatus = {
+      current: mp.current_formatted,
+      soft: mp.soft_formatted,
+      hard: mp.hard_formatted,
+      level: mp.pressure_level,
+    };
+  } else {
+    memoryStatus = null;
   }
 }
 
@@ -186,6 +216,19 @@ function render(snapshot: Snapshot): void {
   rowGenerate.className = 'line';
   rowGenerate.append(el('span', 'what', 'Generate'), el('div', 'meter-empty'), el('span', 'value', createGenerateValue()));
   root!.append(rowGenerate);
+
+  if (memoryStatus) {
+    const rowMemory = document.createElement('div');
+    rowMemory.className = 'line';
+    const levelBadge = memoryStatus.level === 'hard'
+      ? 'oc-sdk-badge error'
+      : memoryStatus.level === 'soft'
+        ? 'oc-sdk-badge warning'
+        : 'oc-sdk-badge success';
+    const labelValue = `Memory: ${memoryStatus.current} / ${memoryStatus.soft} soft / ${memoryStatus.hard} hard`;
+    rowMemory.append(el('span', 'what', 'Memory'), el('div', 'meter-empty'), el('span', 'value', `${labelValue} <span class="${levelBadge}">${memoryStatus.level}</span>`));
+    root!.append(rowMemory);
+  }
 }
 
 function showFailure(failure: PollFailure): void {
