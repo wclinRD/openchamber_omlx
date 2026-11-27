@@ -200,34 +200,34 @@ export interface OmlxWaitingStatus {
 - [x] 透過 `openchamber contribute` 設定 `panel`、`statusSection`、`service`。
 - [x] 安裝測試。
 
-**Stage 5：系統資源監控整合（新增）**
-- [x] 在 `Snapshot` 加入 `system: SystemStats` 與 `history.system: Series`，維持 90 點 history
+**Stage 5：系統資源監控整合**
+- [x] 在 `Snapshot` 加入 `system: SystemStats`、`app: AppStats` 與 `history.system`、`history.app: Series`，維持 90 點 history
 - [x] `OmlxSampler` 加入系統 CPU/Memory/Network 採樣（參考 lmstudio_monitor，5 秒一次）
-- [x] `status/main.ts` 增加 CPU/Memory/Network 三行顯示，與現有 oMLX 指標並排
-- [x] 更新 `doc/Design.md` 記錄系統資源整合規範
-- [x] 將 OpenChamber `statusSection` 高度調高，避免系統與 oMLX 七行數據捲動
+- [x] `OmlxSampler` 加入 OpenChapper/OpenCode 進程樹採樣（`collectTree`、`computeAppStats`）與 `app`、`history.app`
+- [x] `status/main.ts` 增加 CPU/Memory/Network 三行、OpenChamber 行與線圖，以及現有 oMLX 指標
+- [x] 更新 `doc/Design.md` 記錄系統資源與 OpenChamber 行整合規範
 
 ---
 
 ### 4.4 系統資源整合設計（Stage 5）
 
-從 lmstudio_monitor 的 `Sampler` 整合系統資源：
+從 lmstudio_monitor 的 `Sampler` 整合系統與 OpenChamber 資源：
 
 - **SystemStats**：`hostname`, `platform`, `release`, `arch`, `cpuModel`, `cores`, `cpu`（0~100 百分比），`load`（macOS/Linux），`memoryTotal`, `memoryUsed`, `uptimeSeconds`, `networkSpeedUp`, `networkSpeedDown`。
-- **history.system**：`cpu`、`memory` 兩條數列，各 90 點（3 分鐘）；目前 UI 只顯示即時數值，history 供未來擴展。
+- **AppStats**：`rootPid`, `rootName`, `cpu`（0~100 百分比，所有核心總和）, `memory`。從 `process.ppid` 作為 OpenChamber 根進程，從 `process.pid` 排除服務自身及其子進程後收集所有子樹記憶與 CPU。
+- **history.system**：`cpu`、`memory` 兩條數列，各 90 點（3 分鐘）；`history.app`：`cpu`、`memory` 兩條數列，各 90 點。目前 UI 顯示即時數值與 `history.app` 線圖。
 - **採樣方式**：
-  - CPU：`os.cpus()`，前後采樣計算 idle/total 差值得整體 CPU 佔用。
-  - Memory：macOS 使用 `vm_stat` 解析（Anonymous pages - Pages purgeable + Pages wired down + Pages occupied by compressor × page size），Linux 使用 `/proc/meminfo`（MemTotal - MemAvailable）；僅在解析失敗時 fallback 到 `os.totalmem() - os.freemem()`。
+  - CPU：`os.cpus()` 計算系統 CPU；各進程 CPU 由 `cpuSeconds` 前後采樣差值得出，每 2 秒一次。
+  - Memory：macOS 使用 `vm_stat`，Linux 使用 `/proc/meminfo`，均與 lmstudio_monitor 完全相同。進程記憶體來自 `ps -A -o pid=,ppid=,rss=,cputime=,tty=,comm=` 的 RSS（KB × 1024）。
   - Network：macOS `netstat -ib`，Linux `/proc/net/dev`，計算前後采樣差值的 byte/sec，跳過 `lo0`/`lo`。
-  - **頻率**：系統資源每 5 秒採樣一次，低於 oMLX 的 2 秒週期，減少 UI 跳動。
-- **Status UI 顯示**：
-  - CPU：進度條顏色 `var(--oc-info)`，數值為 CPU 百分比。
-  - Memory：進度條顏色 `var(--oc-success)`，數值格式為「已用 / 總容量 · 記憶體使用率」，不使用 CPU 百分比。
-  - Network：僅數值，無進度條。
-  - 與現有 oMLX 指標分開，依序：System → oMLX。
+  - **頻率**：系統資源每 5 秒採樣一次，低於 oMLX 的 2 秒週期，減少 UI 跳動；進程樹每 2 秒隨 oMLX 采樣更新。
+- **Status UI 顯示（依序）**：
+  - **OpenChamber 行**：標籤 OpenChamber，圖表為 18px 高的線圖（`mountChart`），數值格式「已用記憶體 · CPU 百分比」。提示：「Memory and CPU of OpenChamber, OpenCode, and everything they started. CPU counts 100% per core.」。
+  - **系統三行**：CPU（進度條 `var(--oc-info)`）、Memory（進度條 `var(--oc-success)`，格式「已用 / 總容量 · 記憶體使用率」）、Network（數值，無進度條）。
+  - **oMLX 四行**：Model、Prefill（進度條）、Generate、Pressure（進度條）。
 - **高度與捲動設定**：
-  - `package.json` 中 `statusSection.height` 設為 `120`。
-  - 行間距 `gap` 設為 `4px`，`.line` 最小高度 `12px`，容納 7 行數據（CPU、Memory、Network、Model、Prefill、Generate、Pressure），不產生捲動且高度最緊湊。
+  - `package.json` 中 `statusSection.height` 設為 `180`。
+  - 行間距 `gap` 設為 `4px`，`.line` 最小高度 `18px`，線圖行高度為圖表 `height: 18px`。總共 8 行，容納所有數據而不產生捲動。
 
 ---
 

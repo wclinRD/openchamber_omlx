@@ -17,9 +17,24 @@ import type {
   SystemStats,
   Warning,
   Percent,
+  AppStats,
 } from '../shared/snapshot.ts';
 import type { OmlxApi } from './omlx-api.ts';
 import { HISTORY_POINTS } from '../shared/snapshot.ts';
+
+export interface RawProcess {
+  pid: number;
+  ppid: number;
+  name: string;
+  /** Resident memory in bytes. */
+  memory: number;
+  /** User plus system CPU time since the process started, in seconds. */
+  cpuSeconds: number;
+  /** Start time in ms since the epoch, where the OS reuses parent pids (Windows). */
+  startedAt?: number;
+  /** Controlling terminal (`ttys004`, a Linux tty number); absent without one or on Windows. */
+  tty?: string;
+}
 
 const SAMPLE_INTERVAL_MS = 2_000;
 /** System resources sampled less frequently than oMLX activity to avoid jitter. */
@@ -56,11 +71,87 @@ const parseMeminfoUsed = (content: string): number | null => {
   return Number.isFinite(total) && Number.isFinite(available) ? Math.max(0, total - available) : null;
 };
 
+const parseCpuTime = (value: string): number => {
+  const [daysPart, clock] = value.includes('-') ? value.split('-', 2) : ['0', value];
+  const parts = (clock ?? '').split(':').map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return Number.NaN;
+  let seconds = 0;
+  for (const part of parts) seconds = seconds * 60 + part;
+  return Number(daysPart) * 86_400 + seconds;
+};
+
+const basename = (path: string): string => {
+  const trimmed = path.trim();
+  const slash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+};
+
+const parsePsList = (stdout: string): RawProcess[] => {
+  const rows: RawProcess[] = [];
+  for (const line of stdout.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+?)\s*$/.exec(line);
+    if (!match) continue;
+    const pid = toInt(match[1]);
+    const ppid = toInt(match[2]);
+    const rssKb = toInt(match[3]);
+    const cpuSeconds = parseCpuTime(match[4] ?? '');
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+    const tty = match[5] ?? '??';
+    rows.push({
+      pid,
+      ppid,
+      name: basename(match[6] ?? ''),
+      memory: Number.isFinite(rssKb) ? rssKb * 1024 : 0,
+      cpuSeconds: Number.isFinite(cpuSeconds) ? cpuSeconds : 0,
+      ...(tty === '??' || tty === '-' ? {} : { tty }),
+    });
+  }
+  return rows;
+};
+
+const run = (file: string, args: string[], okExitCodes: number[] = [0]): Promise<string> =>
+  new Promise((resolve, reject) => {
+    import('node:child_process').then(({ execFile }) => {
+      execFile(file, args, { timeout: 10_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
+        const code = error && 'code' in error && typeof error.code === 'number' ? error.code : error ? -1 : 0;
+        if (!error || okExitCodes.includes(code)) resolve(stdout);
+        else reject(error);
+      });
+    });
+  });
+
+const parsePsListSync = (stdout: string): RawProcess[] => {
+  const rows: RawProcess[] = [];
+  for (const line of stdout.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+?)\s*$/.exec(line);
+    if (!match) continue;
+    const pid = toInt(match[1]);
+    const ppid = toInt(match[2]);
+    const rssKb = toInt(match[3]);
+    const cpuSeconds = parseCpuTime(match[4] ?? '');
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+    const tty = match[5] ?? '??';
+    rows.push({
+      pid,
+      ppid,
+      name: basename(match[6] ?? ''),
+      memory: Number.isFinite(rssKb) ? rssKb * 1024 : 0,
+      cpuSeconds: Number.isFinite(cpuSeconds) ? cpuSeconds : 0,
+      ...(tty === '??' || tty === '-' ? {} : { tty }),
+    });
+  }
+  return rows;
+};
+
 export class OmlxSampler {
   private api: OmlxApi;
   private history: SnapshotPoint[] = [];
   private systemHistory: Series = { cpu: [], memory: [] };
+  private appHistory: Series = { cpu: [], memory: [] };
+  private lastAppStats: AppStats | null = null;
   private previousCores: CpuTimes[] | null = null;
+  private previousCpu: Map<number, { seconds: number; name: string }> = new Map();
+  private previousAt = 0;
   private previousNetworkStats: NetworkStats | null = null;
   private previousNetworkAt = 0;
   private lastSystemStats: SystemStats | null = null;
@@ -187,6 +278,75 @@ export class OmlxSampler {
     if (series.length > HISTORY_POINTS) series.splice(0, series.length - HISTORY_POINTS);
   }
 
+  private childrenOf = (processes: readonly RawProcess[]): Map<number, RawProcess[]> => {
+    const children = new Map<number, RawProcess[]>();
+    for (const process of processes) {
+      if (process.pid === process.ppid) continue;
+      const list = children.get(process.ppid) ?? [];
+      list.push(process);
+      children.set(process.ppid, list);
+    }
+    return children;
+  };
+
+  private collectTree = (processes: readonly RawProcess[], rootPid: number, selfPid: number): Map<number, RawProcess> => {
+    const byPid = new Map(processes.map((process) => [process.pid, process]));
+    const children = this.childrenOf(processes);
+    const members = new Map<number, RawProcess>();
+    const root = byPid.get(rootPid);
+    if (!root) return members;
+    const stack: RawProcess[] = [root];
+    while (stack.length > 0) {
+      const process = stack.pop();
+      if (!process || members.has(process.pid)) continue;
+      members.set(process.pid, process);
+      if (process.pid === selfPid) continue;
+      for (const child of children.get(process.pid) ?? []) {
+        const { startedAt: childStart } = child;
+        const { startedAt: parentStart } = process;
+        if (childStart !== undefined && parentStart !== undefined && childStart < parentStart) continue;
+        stack.push(child);
+      }
+    }
+    return members;
+  };
+
+  private cpuFromProcesses = (processes: readonly RawProcess[], at: number, cores: number): Map<number, Percent | null> => {
+    const elapsed = (at - this.previousAt) / 1000;
+    const cpu = new Map<number, Percent | null>();
+    const next = new Map<number, { seconds: number; name: string }>();
+    for (const process of processes) {
+      next.set(process.pid, { seconds: process.cpuSeconds, name: process.name });
+      const previous = this.previousCpu.get(process.pid);
+      if (!previous || previous.name !== process.name || this.previousAt === 0 || elapsed <= 0) {
+        cpu.set(process.pid, null);
+        continue;
+      }
+      const used = Math.max(0, process.cpuSeconds - previous.seconds);
+      cpu.set(process.pid, Math.min(100 * cores, (100 * used) / elapsed));
+    }
+    this.previousCpu = next;
+    this.previousAt = at;
+    return cpu;
+  };
+
+  private computeAppStats = async (processes: readonly RawProcess[], at: number): Promise<AppStats> => {
+    const cores = Math.max(1, os.cpus().length);
+    const rootPid = process.ppid; // OpenChapper main process (service's parent)
+    const selfPid = process.pid;
+    const cpu = this.cpuFromProcesses(processes, at, cores);
+    const members = this.collectTree(processes, rootPid, selfPid);
+    let totalCpu: Percent = 0;
+    let totalMemory = 0;
+    for (const [pid, process] of members) {
+      const cpuPct = cpu.get(pid) ?? 0;
+      if (Number.isFinite(cpuPct)) totalCpu += cpuPct;
+      totalMemory += process.memory;
+    }
+    const rootName = members.get(rootPid)?.name ?? 'OpenChamber';
+    return { rootPid, rootName, cpu: totalCpu, memory: totalMemory };
+  };
+
   private systemStats(): SystemStats {
     const systemCpu = this.systemCpu();
     let memoryUsed: number;
@@ -264,6 +424,20 @@ export class OmlxSampler {
     if (shouldSampleSystem && system.cpu !== null) {
       this.pushSeries(this.systemHistory.cpu, system.cpu);
       this.pushSeries(this.systemHistory.memory, system.memoryUsed);
+      let appStats: AppStats | null = null;
+      try {
+        const processes = parsePsListSync(execSync('ps -A -o pid=,ppid=,rss=,cputime=,tty=,comm=', { encoding: 'utf8' }));
+        appStats = await this.computeAppStats(processes, at);
+        this.pushSeries(this.appHistory.cpu, appStats.cpu);
+        this.pushSeries(this.appHistory.memory, appStats.memory);
+      } catch {
+        // A failed process read is not "OpenChamber uses nothing": keep the last view and
+        // previous CPU times, so neither the chart nor the next reading drops to zero.
+        const last = this.lastAppStats ?? { rootPid: process.ppid, rootName: 'OpenChamber', cpu: 0, memory: 0 };
+        appStats = last;
+      }
+      if (!appStats) appStats = { rootPid: process.ppid, rootName: 'OpenChamber', cpu: 0, memory: 0 };
+      this.lastAppStats = appStats;
     }
 
     const warnings: Warning[] = [];
@@ -285,11 +459,16 @@ export class OmlxSampler {
         memory_pressure: this.lastStats?.active_models?.memory_pressure,
       },
       system,
+      app: this.lastAppStats ?? { rootPid: process.ppid, rootName: 'OpenChamber', cpu: 0, memory: 0 },
       history: {
         omlx: [...this.history],
         system: {
           cpu: [...this.systemHistory.cpu],
           memory: [...this.systemHistory.memory],
+        },
+        app: {
+          cpu: [...this.appHistory.cpu],
+          memory: [...this.appHistory.memory],
         },
       },
       warnings,

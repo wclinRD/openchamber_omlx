@@ -4,8 +4,16 @@
 /** Points of history the service keeps: three minutes at one sample every two seconds. */
 export const HISTORY_POINTS = 90;
 
-/** Number of CPUs / number of cores; CPU time percentages count 100 per core. */
+/** CPU time percentages count 100 per core, as Activity Monitor and `top` do. */
 export type Percent = number;
+
+/** The root app's memory/CPU footprint under its process tree. */
+export interface AppStats {
+  rootPid: number;
+  rootName: string;
+  cpu: Percent;
+  memory: number;
+}
 
 export interface Series {
   /** Oldest first, one point per sample. */
@@ -148,9 +156,11 @@ export interface Snapshot {
   intervalMs: number;
   omlx: OmlxServerStatus;
   system: SystemStats;
+  app: AppStats;
   history: {
     omlx: SnapshotPoint[];
     system: Series;
+    app: Series;
   };
   warnings: Warning[];
 }
