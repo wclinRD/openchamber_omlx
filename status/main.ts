@@ -3,6 +3,7 @@ import { connectHost } from '@openchamber/sdk';
 import { applyHostReady } from '@openchamber/sdk/ui';
 
 import { PollFailure, FAILURE_TEXT, startPolling } from '../src/shared/client.ts';
+import { mountChart, ChartHandle } from '../src/shared/chart.ts';
 
 function el(tag: string, cls?: string, text?: string | null, children?: HTMLElement[]): HTMLElement {
   const e = document.createElement(tag);
@@ -69,11 +70,31 @@ interface OmlxServerStatus {
   };
 }
 
+interface SystemStats {
+  hostname: string;
+  platform: string;
+  release: string;
+  arch: string;
+  cpuModel: string;
+  cores: number;
+  cpu: number | null;
+  load: [number, number, number] | null;
+  memoryTotal: number;
+  memoryUsed: number;
+  uptimeSeconds: number;
+  networkSpeedUp: number;
+  networkSpeedDown: number;
+}
+
 interface Snapshot {
   at: number;
   intervalMs: number;
   omlx: OmlxServerStatus;
-  history: unknown[];
+  system: SystemStats;
+  history: {
+    omlx: { at: number; prefilling: number; generating: number; waiting: number; active_requests: number; waiting_requests: number }[];
+    system: { cpu: number[]; memory: number[] };
+  };
   warnings: { code: string; message: string }[];
 }
 
@@ -92,6 +113,45 @@ interface MemoryStatusInfo {
   hard: string;
   level: string;
 }
+
+// Number formatting
+let locale = 'en';
+const number = (value: number, digits: number): string => new Intl.NumberFormat(locale, {
+  minimumFractionDigits: digits,
+  maximumFractionDigits: digits,
+}).format(value);
+
+const formatBytes = (bytes: number): string => {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Math.max(0, bytes);
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit >= 3 && value < 100 ? 1 : 0;
+  return `${number(value, digits)} ${units[unit]}`;
+};
+
+const formatPercent = (value: number | null): string => {
+  if (value === null) return '–';
+  if (value > 0 && value < 0.1) return '<0.1%';
+  return `${number(value, value < 10 ? 1 : 0)}%`;
+};
+
+const formatSpeed = (bytesPerSecond: number): string => {
+  if (bytesPerSecond === 0) return '0 KB/s';
+  if (bytesPerSecond <= 0) return '0 B/s';
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+  let value = bytesPerSecond;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit >= 3 && value < 100 ? 1 : 0;
+  return `${number(value, digits)} ${units[unit]}`;
+};
 
 const host = connectHost();
 const root = document.getElementById('root');
@@ -197,9 +257,79 @@ function createGenerateValue(): string {
   return generatingStatus ? `${generatingStatus.tokens} @ ${generatingStatus.tps}` : 'Idle';
 }
 
+const openchamberChart = mountChart({
+  color: 'var(--oc-primary)',
+  height: 18,
+  capacity: 90,
+  format: (v) => `${formatBytes(v)}`,
+  intervalSeconds: 2,
+});
+
+function openchamberRow(snapshot: Snapshot): HTMLElement {
+  const row = el('div', 'line', '', [
+    el('span', 'what', 'OpenChamber'),
+    openchamberChart.element,
+    el('span', 'value num', '–'),
+  ]);
+  row.title = 'Memory and CPU of OpenChamber, OpenCode, and everything they started. CPU counts 100% per core.';
+  return row;
+}
+
 function render(snapshot: Snapshot): void {
   root!.innerHTML = '';
 
+  // OpenChamber section
+  const rowOpenchamber = openchamberRow(snapshot);
+  const ocValue = rowOpenchamber.querySelector<HTMLElement>('.value')!;
+  ocValue.textContent = `${formatBytes(snapshot.app.memory)} · ${formatPercent(snapshot.app.cpu)}`;
+  const maxMemory = Math.max(snapshot.app.memory, ...snapshot.history.app.memory) * 1.15;
+  openchamberChart.update(snapshot.history.app.memory, maxMemory);
+  root!.append(rowOpenchamber);
+
+  // System section
+  const rowCpu = document.createElement('div');
+  rowCpu.className = 'line';
+  const cpuValue = snapshot.system.cpu !== null ? formatPercent(snapshot.system.cpu) : '–';
+  const cpuPercent = snapshot.system.cpu !== null ? Math.max(0, Math.min(100, snapshot.system.cpu)) : 0;
+  const cpuMeter = document.createElement('div');
+  cpuMeter.className = 'meter';
+  const cpuFill = document.createElement('span');
+  cpuFill.className = 'meter-fill meter-fill-cpu';
+  cpuFill.style.width = `${cpuPercent}%`;
+  cpuMeter.append(cpuFill);
+  const cpuText = document.createElement('span');
+  cpuText.className = 'value num';
+  cpuText.textContent = cpuValue;
+  rowCpu.append(el('span', 'what', 'CPU'), cpuMeter, cpuText);
+  root!.append(rowCpu);
+
+  const rowMemory = document.createElement('div');
+  rowMemory.className = 'line';
+  const memPct = Math.max(0, Math.min(100, (snapshot.system.memoryUsed / Math.max(1, snapshot.system.memoryTotal)) * 100));
+  const memoryMeter = document.createElement('div');
+  memoryMeter.className = 'meter';
+  const memoryFill = document.createElement('span');
+  memoryFill.className = 'meter-fill meter-fill-memory';
+  memoryFill.style.width = `${memPct}%`;
+  memoryMeter.append(memoryFill);
+  const memoryText = document.createElement('span');
+  memoryText.className = 'value num';
+  memoryText.textContent = `${formatBytes(snapshot.system.memoryUsed)} / ${formatBytes(snapshot.system.memoryTotal)} · ${formatPercent(memPct)}`;
+  rowMemory.append(el('span', 'what', 'Memory'), memoryMeter, memoryText);
+  root!.append(rowMemory);
+
+  const rowNetwork = document.createElement('div');
+  rowNetwork.className = 'line';
+  const networkValue = snapshot.system.networkSpeedUp === 0 && snapshot.system.networkSpeedDown === 0
+    ? '0 B/s · 0 B/s'
+    : `上傳 ${formatSpeed(snapshot.system.networkSpeedUp)} · 下載 ${formatSpeed(snapshot.system.networkSpeedDown)}`;
+  const networkText = document.createElement('span');
+  networkText.className = 'value num';
+  networkText.textContent = networkValue;
+  rowNetwork.append(el('span', 'what', 'Network'), el('div', 'meter-empty'), networkText);
+  root!.append(rowNetwork);
+
+  // oMLX section
   const rowModel = document.createElement('div');
   rowModel.className = 'line';
 
@@ -222,27 +352,25 @@ function render(snapshot: Snapshot): void {
   root!.append(rowGenerate);
 
   if (memoryStatus) {
-    const rowMemory = document.createElement('div');
-    rowMemory.className = 'line';
+    const rowOmlxMem = document.createElement('div');
+    rowOmlxMem.className = 'line';
 
     const percent = memoryStatus.soft_bytes > 0 ? Math.min(100, Math.round((memoryStatus.current_bytes / memoryStatus.soft_bytes) * 100)) : 0;
 
-    const memoryFill = document.createElement('span');
-    memoryFill.className = 'meter-fill meter-fill-memory';
-    memoryFill.style.width = `${percent}%`;
+    const omlxMemFill = document.createElement('span');
+    omlxMemFill.className = 'meter-fill meter-fill-pressure';
+    omlxMemFill.style.width = `${percent}%`;
 
-    const memoryMeter = document.createElement('div');
-    memoryMeter.className = 'meter';
-    memoryMeter.append(memoryFill);
+    const omlxMemMeter = document.createElement('div');
+    omlxMemMeter.className = 'meter';
+    omlxMemMeter.append(omlxMemFill);
 
-    const memoryText = document.createElement('span');
-    memoryText.className = 'value num';
-    const currentNoGb = memoryStatus.current.replace(/GB\s*$/, '');
-    const softNoGb = memoryStatus.soft.replace(/GB\s*$/, '');
-    memoryText.textContent = `${currentNoGb} / ${softNoGb} GB · ${percent}%`;
+    const omlxMemText = document.createElement('span');
+    omlxMemText.className = 'value num';
+    omlxMemText.textContent = `${memoryStatus.current} / ${memoryStatus.soft} · ${percent}%`;
 
-    rowMemory.append(el('span', 'what', 'Pressure'), memoryMeter, memoryText);
-    root!.append(rowMemory);
+    rowOmlxMem.append(el('span', 'what', 'Pressure'), omlxMemMeter, omlxMemText);
+    root!.append(rowOmlxMem);
   }
 }
 
@@ -258,15 +386,29 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
+  .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 4px; min-height: 18px; }
   .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .line .value.num { font-variant-numeric: tabular-nums; }
+  .chart { position: relative; width: 100%; overflow: hidden; }
+  .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .chart-grid { stroke: var(--oc-border); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .5; fill: none; }
+  .chart-cursor, .chart-dot, .chart-tip { position: absolute; pointer-events: none; opacity: 0; }
+  .chart.hovering .chart-cursor, .chart.hovering .chart-dot, .chart.hovering .chart-tip { opacity: 1; }
+  .chart-cursor { top: 0; bottom: 0; left: 0; width: 1px; background: var(--oc-border); }
+  .chart-dot { top: -3px; left: -3px; width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--oc-fg) 4%, var(--oc-bg)); }
+  .chart-tip { top: 2px; padding: 1px 6px; border-radius: 4px; white-space: nowrap; font-size: 11px;
+    background: var(--oc-elevated); color: var(--oc-elevated-fg); font-variant-numeric: tabular-nums;
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / .8), inset 0 0 0 1px rgb(0 0 0 / .04), 0 0 0 1px rgb(0 0 0 / .1), 0 1px 2px -.5px rgb(0 0 0 / .08); }
+  [data-oc-theme="dark"] .chart-tip { box-shadow: inset 0 1px 0 0 rgb(255 255 255 / .06), inset 0 0 0 1px rgb(255 255 255 / .08),
+    0 0 0 1px rgb(0 0 0 / .36), 0 1px 1px -.5px rgb(0 0 0 / .22); }
   .meter { position: relative; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--oc-fg) 8%, transparent); overflow: hidden; }
   .meter > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; transition: width .4s ease; }
   .meter-empty { height: 4px; }
   .meter-fill { background: var(--oc-success); }
+  .meter-fill-cpu { background: var(--oc-info); }
   .meter-fill-memory { background: var(--oc-primary); }
+  .meter-fill-pressure { background: var(--oc-warning); }
 `;
 document.head.append(style);
 

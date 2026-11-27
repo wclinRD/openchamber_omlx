@@ -97,14 +97,20 @@ export interface Snapshot {
 }
 
 // Lightweight shape check to catch malformed answers without importing all snapshot types.
-const isSnapshot = (value: unknown): value is Snapshot => isRecord(value)
-  && typeof value.at === 'number'
-  && typeof value.intervalMs === 'number'
-  && isRecord(value.omlx)
-  && isRecord(value.omlx.summary)
-  && Array.isArray((value as Snapshot).omlx.active_models)
-  && Array.isArray((value as Snapshot).history)
-  && Array.isArray((value as Snapshot).warnings);
+const isSnapshot = (value: unknown): value is Snapshot => {
+  if (!isRecord(value)) return false;
+  if (typeof value.at !== 'number' || typeof value.intervalMs !== 'number') return false;
+  if (!isRecord(value.omlx) || !isRecord(value.omlx.summary)) return false;
+  if (!Array.isArray((value as unknown as { omlx: { active_models: unknown[] } }).omlx.active_models)) return false;
+  if (!isRecord(value.history)) return false;
+  const history = value.history as unknown as { omlx: unknown[]; system: unknown };
+  if (!Array.isArray(history.omlx)) return false;
+  if (!isRecord(history.system)) return false;
+  const system = history.system as unknown as { cpu: unknown[]; memory: unknown[] };
+  if (!Array.isArray(system.cpu) || !Array.isArray(system.memory)) return false;
+  if (!Array.isArray(value.warnings)) return false;
+  return true;
+};
 
 const failureOf = (error: unknown): PollFailure => {
   if (!(error instanceof HostRequestError)) return 'unreachable';
