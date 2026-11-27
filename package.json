@@ -20,7 +20,7 @@
       "statusSection": {
         "entry": "status/index.html",
         "title": "oMLX Status",
-        "height": 180
+        "height": 150
       },
       "service": {
         "entry": "service/main.js",
