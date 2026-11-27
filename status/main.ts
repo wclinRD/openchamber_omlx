@@ -421,4 +421,12 @@ host.onReady(async (context) => {
   }, showFailure);
 
   void pollController.refresh();
+
+  let lastHeight = -1;
+  new ResizeObserver(() => {
+    const height = Math.ceil(root.getBoundingClientRect().height);
+    if (height === lastHeight) return;
+    lastHeight = height;
+    void host.setHeight(height).catch(() => undefined);
+  }).observe(root);
 });
