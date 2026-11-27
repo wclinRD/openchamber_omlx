@@ -217,12 +217,12 @@ export interface OmlxWaitingStatus {
 - **history.system**：`cpu`、`memory` 兩條數列，各 90 點（3 分鐘）；目前 UI 只顯示即時數值，history 供未來擴展。
 - **採樣方式**：
   - CPU：`os.cpus()`，前後采樣計算 idle/total 差值得整體 CPU 佔用。
-  - Memory：`os.totalmem()` - `os.freemem()`（若 `source.memoryUsed()` 失敗的 fallback）。
+  - Memory：macOS 使用 `vm_stat` 解析（Anonymous pages - Pages purgeable + Pages wired down + Pages occupied by compressor × page size），Linux 使用 `/proc/meminfo`（MemTotal - MemAvailable）；僅在解析失敗時 fallback 到 `os.totalmem() - os.freemem()`。
   - Network：macOS `netstat -ib`，Linux `/proc/net/dev`，計算前後采樣差值的 byte/sec，跳過 `lo0`/`lo`。
   - **頻率**：系統資源每 5 秒採樣一次，低於 oMLX 的 2 秒週期，減少 UI 跳動。
 - **Status UI 顯示**：
-  - CPU：進度條顏色 `var(--oc-info)`。
-  - Memory：進度條顏色 `var(--oc-success)`。
+  - CPU：進度條顏色 `var(--oc-info)`，數值為 CPU 百分比。
+  - Memory：進度條顏色 `var(--oc-success)`，數值格式為「已用 / 總容量 · 記憶體使用率」，不使用 CPU 百分比。
   - Network：僅數值，無進度條。
   - 與現有 oMLX 指標分開，依序：System → oMLX。
 - **高度與捲動設定**：

@@ -287,7 +287,7 @@ function render(snapshot: Snapshot): void {
   memoryMeter.append(memoryFill);
   const memoryText = document.createElement('span');
   memoryText.className = 'value num';
-  memoryText.textContent = `${formatBytes(snapshot.system.memoryUsed)} / ${formatBytes(snapshot.system.memoryTotal)} · ${formatPercent(snapshot.system.cpu ?? null)}`.replace(/(GB)\s*$/, '$1'); // formatBytes already includes unit
+  memoryText.textContent = `${formatBytes(snapshot.system.memoryUsed)} / ${formatBytes(snapshot.system.memoryTotal)} · ${formatPercent(memPct)}`;
   rowMemory.append(el('span', 'what', 'Memory'), memoryMeter, memoryText);
   root!.append(rowMemory);
 
@@ -359,7 +359,7 @@ const style = document.createElement('style');
 style.textContent = `
   html, body { margin: 0; background: transparent; color: var(--oc-fg); font: 12px/1.4 var(--oc-font); }
   * { box-sizing: border-box; }
-  .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 18px; }
+  .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 4px; min-height: 12px; }
   .line .what { color: var(--oc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line .value { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .line .value.num { font-variant-numeric: tabular-nums; }

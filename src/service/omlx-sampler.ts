@@ -28,6 +28,34 @@ const SYSTEM_SAMPLE_INTERVAL_MS = 5_000;
 interface NetworkStats { tx: number; rx: number }
 interface CpuTimes { idle: number; total: number }
 
+const parseVmStatUsed = (stdout: string): number | null => {
+  const pageSizeMatch = /^page size of (\d+) bytes/m.exec(stdout);
+  const pageSize = pageSizeMatch && pageSizeMatch[1] ? Number.parseInt(pageSizeMatch[1], 10) : Number.NaN;
+  const pages = (label: string): number => {
+    const match = new RegExp(`^${label}:\\s+(\\d+)`, 'm').exec(stdout);
+    return match && match[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+  };
+  const anonymous = pages('Anonymous pages');
+  const purgeable = pages('Pages purgeable');
+  const wired = pages('Pages wired down');
+  const compressed = pages('Pages occupied by compressor');
+  const values = [pageSize, anonymous, wired, compressed];
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  const app = Math.max(0, anonymous - (Number.isFinite(purgeable) ? purgeable : 0));
+  return (app + wired + compressed) * pageSize;
+};
+
+const parseMeminfoUsed = (content: string): number | null => {
+  const read = (label: string): number => {
+    const match = new RegExp(`^${label}:\\s+(\\d+) kB`, 'm').exec(content);
+    return match && match[1] ? Number.parseInt(match[1], 10) * 1024 : Number.NaN;
+  };
+  const total = read('MemTotal');
+  const available = read('MemAvailable');
+  if (!Number.isFinite(total) || !Number.isFinite(available)) return null;
+  return Math.max(0, total - available);
+};
+
 export class OmlxSampler {
   private api: OmlxApi;
   private history: SnapshotPoint[] = [];
@@ -163,9 +191,21 @@ export class OmlxSampler {
     const systemCpu = this.systemCpu();
     let memoryUsed: number;
     try {
-      memoryUsed = os.totalmem() - os.freemem();
+      if (process.platform === 'darwin') {
+        const vmStat = execSync('vm_stat', { encoding: 'utf8' });
+        const used = parseVmStatUsed(vmStat);
+        if (used !== null) memoryUsed = used;
+        else memoryUsed = os.totalmem() - os.freemem();
+      } else if (process.platform === 'linux') {
+        const meminfo = readFileSync('/proc/meminfo', 'utf8');
+        const used = parseMeminfoUsed(meminfo);
+        if (used !== null) memoryUsed = used;
+        else memoryUsed = os.totalmem() - os.freemem();
+      } else {
+        memoryUsed = os.totalmem() - os.freemem();
+      }
     } catch {
-      memoryUsed = 0;
+      memoryUsed = os.totalmem() - os.freemem();
     }
 
     const load = os.loadavg();
