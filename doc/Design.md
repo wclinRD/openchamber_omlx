@@ -226,8 +226,8 @@ export interface OmlxWaitingStatus {
   - Network：僅數值，無進度條。
   - 與現有 oMLX 指標分開，依序：System → oMLX。
 - **高度與捲動設定**：
-  - `package.json` 中 `statusSection.height` 設為 `150`。
-  - 行間距 `gap` 改為 `6px`，`.line` 最小高度 `16px`，容納 7 行數據（CPU、Memory、Network、Model、Prefill、Generate、Pressure），不產生捲動且消除留白。
+  - `package.json` 中 `statusSection.height` 設為 `120`。
+  - 行間距 `gap` 設為 `4px`，`.line` 最小高度 `12px`，容納 7 行數據（CPU、Memory、Network、Model、Prefill、Generate、Pressure），不產生捲動且高度最緊湊。
 
 ---
 
