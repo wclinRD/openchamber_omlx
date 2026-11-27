@@ -227,7 +227,7 @@ export interface OmlxWaitingStatus {
   - **oMLX 四行**：Model、Prefill（進度條）、Generate、Pressure（進度條）。
 - **高度與捲動設定**：
   - `package.json` 中 `statusSection.height` 設為 `180`。
-  - 行間距 `gap` 設為 `4px`，`.line` 最小高度 `12px`（OpenChamber 行因圖表 `height: 18px` 保持 18px），並在各行之間加上 `margin-bottom: 3px` 以增加垂直間距。總共 8 行，容納所有數據而不產生捲動；`statusSection.height` 設為 `130` 配合此間距。
+  - 行間距 `gap` 設為 `4px`，`.line` 最小高度 `12px`（OpenChamber 行因圖表 `height: 18px` 保持 18px），並在各行之間加上 `margin-bottom: 3px` 以增加垂直間距。總共 8 行，容納所有數據而不產生捲動；`statusSection.height` 設為 `120`。
 
 ---
 
