@@ -201,10 +201,11 @@ export interface OmlxWaitingStatus {
 - [x] 安裝測試。
 
 **Stage 5：系統資源監控整合（新增）**
-- [ ] 在 `Snapshot` 加入 `system: SystemStats` 與 `history.system: Series`，維持 90 點 history
-- [ ] `OmlxSampler` 加入系統 CPU/Memory/Network 採樣（參考 lmstudio_monitor）
-- [ ] `status/main.ts` 增加 CPU/Memory/Network 三行顯示，與現有 oMLX 指標並排
-- [ ] 更新 `doc/Design.md` 記錄系統資源整合規範
+- [x] 在 `Snapshot` 加入 `system: SystemStats` 與 `history.system: Series`，維持 90 點 history
+- [x] `OmlxSampler` 加入系統 CPU/Memory/Network 採樣（參考 lmstudio_monitor，5 秒一次）
+- [x] `status/main.ts` 增加 CPU/Memory/Network 三行顯示，與現有 oMLX 指標並排
+- [x] 更新 `doc/Design.md` 記錄系統資源整合規範
+- [x] 將 OpenChamber `statusSection` 高度調高，避免系統與 oMLX 七行數據捲動
 
 ---
 
@@ -218,11 +219,14 @@ export interface OmlxWaitingStatus {
   - CPU：`os.cpus()`，前後采樣計算 idle/total 差值得整體 CPU 佔用。
   - Memory：`os.totalmem()` - `os.freemem()`（若 `source.memoryUsed()` 失敗的 fallback）。
   - Network：macOS `netstat -ib`，Linux `/proc/net/dev`，計算前後采樣差值的 byte/sec，跳過 `lo0`/`lo`。
+  - **頻率**：系統資源每 5 秒採樣一次，低於 oMLX 的 2 秒週期，減少 UI 跳動。
 - **Status UI 顯示**：
   - CPU：進度條顏色 `var(--oc-info)`。
   - Memory：進度條顏色 `var(--oc-success)`。
   - Network：僅數值，無進度條。
   - 與現有 oMLX 指標分開，依序：System → oMLX。
+- **高度與捲動設定**：
+  - `package.json` 中 `statusSection.height` 設為 `220`，容納 7 行數據（CPU、Memory、Network、Model、Prefill、Generate、Pressure），不產生捲動。
 
 ---
 
