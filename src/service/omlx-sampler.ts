@@ -28,12 +28,16 @@ const SYSTEM_SAMPLE_INTERVAL_MS = 5_000;
 interface NetworkStats { tx: number; rx: number }
 interface CpuTimes { idle: number; total: number }
 
+const toInt = (value: string | undefined): number => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 const parseVmStatUsed = (stdout: string): number | null => {
-  const pageSizeMatch = /^page size of (\d+) bytes/m.exec(stdout);
-  const pageSize = pageSizeMatch && pageSizeMatch[1] ? Number.parseInt(pageSizeMatch[1], 10) : Number.NaN;
+  const pageSize = toInt(/page size of (\d+) bytes/.exec(stdout)?.[1]);
   const pages = (label: string): number => {
     const match = new RegExp(`^${label}:\\s+(\\d+)`, 'm').exec(stdout);
-    return match && match[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+    return toInt(match?.[1]);
   };
   const anonymous = pages('Anonymous pages');
   const purgeable = pages('Pages purgeable');
@@ -46,14 +50,10 @@ const parseVmStatUsed = (stdout: string): number | null => {
 };
 
 const parseMeminfoUsed = (content: string): number | null => {
-  const read = (label: string): number => {
-    const match = new RegExp(`^${label}:\\s+(\\d+) kB`, 'm').exec(content);
-    return match && match[1] ? Number.parseInt(match[1], 10) * 1024 : Number.NaN;
-  };
+  const read = (label: string): number => toInt(new RegExp(`^${label}:\\s+(\\d+) kB`, 'm').exec(content)?.[1]) * 1024;
   const total = read('MemTotal');
   const available = read('MemAvailable');
-  if (!Number.isFinite(total) || !Number.isFinite(available)) return null;
-  return Math.max(0, total - available);
+  return Number.isFinite(total) && Number.isFinite(available) ? Math.max(0, total - available) : null;
 };
 
 export class OmlxSampler {
