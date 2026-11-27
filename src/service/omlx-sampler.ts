@@ -1,16 +1,42 @@
 // Polls /admin/api/activity and transforms the raw oMLX structure into our
-// snapshot types, maintaining history for charts.
+// snapshot types, maintaining history for charts. Also collects system resource
+// readings (CPU, memory, network) like lmstudio_monitor.
 
-import type { OmlxActivityModel, OmlxActivityStats } from '../shared/snapshot.ts';
+import os from 'node:os';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+import type {
+  OmlxActivityModel,
+  OmlxActivityStats,
+  OmlxModelStatus,
+  OmlxSnapshotSummary,
+  Series,
+  Snapshot,
+  SnapshotPoint,
+  SystemStats,
+  Warning,
+  Percent,
+} from '../shared/snapshot.ts';
 import type { OmlxApi } from './omlx-api.ts';
-import type { OmlxModelStatus, OmlxSnapshotSummary, Snapshot, SnapshotPoint, Warning } from '../shared/snapshot.ts';
 import { HISTORY_POINTS } from '../shared/snapshot.ts';
 
 const SAMPLE_INTERVAL_MS = 2_000;
+/** System resources sampled less frequently than oMLX activity to avoid jitter. */
+const SYSTEM_SAMPLE_INTERVAL_MS = 5_000;
+
+interface NetworkStats { tx: number; rx: number }
+interface CpuTimes { idle: number; total: number }
 
 export class OmlxSampler {
   private api: OmlxApi;
   private history: SnapshotPoint[] = [];
+  private systemHistory: Series = { cpu: [], memory: [] };
+  private previousCores: CpuTimes[] | null = null;
+  private previousNetworkStats: NetworkStats | null = null;
+  private previousNetworkAt = 0;
+  private lastSystemStats: SystemStats | null = null;
+  private systemLastSampleAt = 0;
   private lastStats: OmlxActivityStats | null = null;
   private running = false;
   private timer: NodeJS.Timeout | null = null;
@@ -23,11 +49,162 @@ export class OmlxSampler {
     return this.history;
   }
 
+  /** Read system CPU as an overall percentage across all cores. */
+  private systemCpu(): Percent | null {
+    const now = os.cpus().map(({ times }) => ({
+      idle: times.idle,
+      total: times.user + times.nice + times.sys + times.idle + times.irq,
+    }));
+    const before = this.previousCores;
+    this.previousCores = now;
+    if (!before || before.length !== now.length) return null;
+    let idle = 0;
+    let total = 0;
+    now.forEach((core, index) => {
+      const previous = before[index];
+      if (!previous) return;
+      idle += core.idle - previous.idle;
+      total += core.total - previous.total;
+    });
+    if (total === 0) return null;
+    const pct = 100 * (1 - idle / total);
+    return Math.min(100, Math.max(0, pct));
+  }
+
+  private readNetworkStats(): { tx: number; rx: number } {
+    const platform = process.platform;
+    if (platform === 'darwin') {
+      try {
+        const output = execSync('netstat -ib', { encoding: 'utf8' });
+        let tx = 0;
+        let rx = 0;
+        let currentName: string | null = null;
+        for (const line of output.split('\n')) {
+          if (/^Name/.test(line)) continue;
+          const parts = line.split(/\s+/).filter(Boolean);
+          if (parts.length < 10) continue;
+          const isLinkRow = line.includes('<Link#');
+          if (isLinkRow) {
+            const match = line.match(/^(\S+)\s/);
+            currentName = match ? match[1] || null : null;
+            if (!currentName) continue;
+          }
+          if (!currentName || currentName === 'lo0') continue;
+          let ibytes: number;
+          let obytes: number;
+          if (parts.length === 10) {
+            ibytes = Number(parts[5]);
+            obytes = Number(parts[8]);
+          } else {
+            ibytes = Number(parts[6]);
+            obytes = Number(parts[9]);
+          }
+          if (!Number.isNaN(ibytes) && !Number.isNaN(obytes)) {
+            rx += ibytes;
+            tx += obytes;
+          }
+        }
+        return { tx, rx };
+      } catch {
+        return { tx: 0, rx: 0 };
+      }
+    }
+    if (platform === 'linux') {
+      try {
+        const text = readFileSync('/proc/net/dev', 'utf8');
+        let tx = 0;
+        let rx = 0;
+        for (const line of text.split('\n')) {
+          if (/^Inter-|^face/.test(line)) continue;
+          const match = line.match(/^(\S+):\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+).*$/);
+          if (!match) continue;
+          const name = match[1]!.replace(':', '');
+          if (name === 'lo') continue;
+          const r = Number(match[2]!);
+          const t = Number(match[10]!);
+          if (!Number.isNaN(r) && !Number.isNaN(t)) {
+            rx += r;
+            tx += t;
+          }
+        }
+        return { tx, rx };
+      } catch {
+        return { tx: 0, rx: 0 };
+      }
+    }
+    return { tx: 0, rx: 0 };
+  }
+
+  private networkThroughput(): { up: number; down: number } {
+    const nowAt = Date.now();
+    const currentBytes = this.readNetworkStats();
+    let up = 0;
+    let down = 0;
+    if (this.previousNetworkStats && this.previousNetworkAt > 0) {
+      const elapsed = (nowAt - this.previousNetworkAt) / 1000;
+      if (elapsed > 0) {
+        const deltaSent = currentBytes.tx - this.previousNetworkStats.tx;
+        const deltaReceived = currentBytes.rx - this.previousNetworkStats.rx;
+        if (deltaSent > 0) up = Math.max(0, deltaSent / elapsed);
+        if (deltaReceived > 0) down = Math.max(0, deltaReceived / elapsed);
+      }
+    }
+    this.previousNetworkAt = nowAt;
+    this.previousNetworkStats = currentBytes;
+    return { up, down };
+  }
+
+  private pushSeries(series: number[], value: number): void {
+    series.push(value);
+    if (series.length > HISTORY_POINTS) series.splice(0, series.length - HISTORY_POINTS);
+  }
+
+  private systemStats(): SystemStats {
+    const systemCpu = this.systemCpu();
+    let memoryUsed: number;
+    try {
+      memoryUsed = os.totalmem() - os.freemem();
+    } catch {
+      memoryUsed = 0;
+    }
+
+    const load = os.loadavg();
+    const firstCpu = os.cpus()[0];
+
+    const throughput = this.networkThroughput();
+    return {
+      hostname: os.hostname(),
+      platform: process.platform,
+      release: os.release(),
+      arch: os.arch(),
+      cpuModel: firstCpu?.model.trim() ?? '',
+      cores: Math.max(1, os.cpus().length),
+      cpu: systemCpu,
+      load: process.platform === 'win32' ? null : [load[0] ?? 0, load[1] ?? 0, load[2] ?? 0],
+      memoryTotal: os.totalmem(),
+      memoryUsed,
+      uptimeSeconds: os.uptime(),
+      networkSpeedUp: throughput.up,
+      networkSpeedDown: throughput.down,
+    };
+  }
+
   public async snapshot(): Promise<Snapshot> {
     if (!this.lastStats) {
       await this.sample();
     }
     const at = Date.now();
+    const shouldSampleSystem = !this.systemLastSampleAt || (at - this.systemLastSampleAt) >= SYSTEM_SAMPLE_INTERVAL_MS;
+
+    let system: SystemStats;
+    if (shouldSampleSystem) {
+      system = this.systemStats();
+      this.systemLastSampleAt = at;
+      this.lastSystemStats = system;
+    } else {
+      system = this.lastSystemStats ?? this.systemStats();
+    }
+
     const rawModels = this.lastStats?.active_models?.models ?? [];
     const summary = this.lastStats
       ? this.computeSummary(this.transformModels(rawModels))
@@ -42,6 +219,12 @@ export class OmlxSampler {
     };
     this.history.push(point);
     if (this.history.length > HISTORY_POINTS) this.history.shift();
+
+    // Points without a CPU reading yet would draw a false zero.
+    if (shouldSampleSystem && system.cpu !== null) {
+      this.pushSeries(this.systemHistory.cpu, system.cpu);
+      this.pushSeries(this.systemHistory.memory, system.memoryUsed);
+    }
 
     const warnings: Warning[] = [];
     if (this.api.authError) {
@@ -61,7 +244,14 @@ export class OmlxSampler {
         summary,
         memory_pressure: this.lastStats?.active_models?.memory_pressure,
       },
-      history: [...this.history],
+      system,
+      history: {
+        omlx: [...this.history],
+        system: {
+          cpu: [...this.systemHistory.cpu],
+          memory: [...this.systemHistory.memory],
+        },
+      },
       warnings,
     };
   }

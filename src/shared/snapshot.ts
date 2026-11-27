@@ -4,6 +4,35 @@
 /** Points of history the service keeps: three minutes at one sample every two seconds. */
 export const HISTORY_POINTS = 90;
 
+/** Number of CPUs / number of cores; CPU time percentages count 100 per core. */
+export type Percent = number;
+
+export interface Series {
+  /** Oldest first, one point per sample. */
+  cpu: Percent[];
+  memory: number[];
+}
+
+/** System-level resource readings collected by the sampler. */
+export interface SystemStats {
+  hostname: string;
+  platform: string; // process.platform
+  release: string;
+  arch: string;
+  cpuModel: string;
+  cores: number;
+  cpu: Percent | null; // overall system CPU, 0..100
+  /** 1, 5 and 15 minute load; null on Windows. */
+  load: [number, number, number] | null;
+  memoryTotal: number;
+  memoryUsed: number;
+  uptimeSeconds: number;
+  /** Upload speed in bytes per second. */
+  networkSpeedUp: number;
+  /** Download speed in bytes per second. */
+  networkSpeedDown: number;
+}
+
 /** oMLX `/admin/api/activity` model object shape (actual fields). */
 export interface OmlxActivityModel {
   id: string;
@@ -118,7 +147,11 @@ export interface Snapshot {
   at: number;
   intervalMs: number;
   omlx: OmlxServerStatus;
-  history: SnapshotPoint[];
+  system: SystemStats;
+  history: {
+    omlx: SnapshotPoint[];
+    system: Series;
+  };
   warnings: Warning[];
 }
 

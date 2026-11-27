@@ -180,25 +180,49 @@ export interface OmlxWaitingStatus {
 ### 4.3 實作階段
 
 **Stage 1：API 與 Service**
-- [ ] 建立專案骨架與 `package.json`
-- [ ] 實作 `omlx-api.ts`，支援 Bearer key（從環境 `OMLX_API_KEY` 或 `~/.omlx/settings.json` 讀取）
-- [ ] 實作 `omlx-sampler.ts`，每 2 秒 poll `/admin/api/activity`
-- [ ] 實作 `service/main.ts`，提供 `/snapshot`、`/omlx-events`、`/health`
-- [ ] 編譯為 JS，測試 `/snapshot` 回傳。
+- [x] 建立專案骨架與 `package.json`
+- [x] 實作 `omlx-api.ts`，支援 Bearer key（從環境 `OMLX_API_KEY` 或 `~/.omlx/settings.json` 讀取）
+- [x] 實作 `omlx-sampler.ts`，每 2 秒 poll `/admin/api/activity`
+- [x] 實作 `service/main.ts`，提供 `/snapshot`、`/omlx-events`、`/health`
+- [x] 編譯為 JS，測試 `/snapshot` 回傳。
 
 **Stage 2：Panel & Status UI**
-- [ ] 設計面板卡片：各模型的 loaded/prefilling/generating/waiting 狀態。
-- [ ] 顯示 active request 列表（prefill progress、generated tokens、tps）。
-- [ ] 提供中斷請求按鈕（`POST /admin/api/models/.../requests/.../abort`）。
-- [ ] Status section 短報（總數、目前模型、最大 TPS）。
+- [x] 設計面板卡片：各模型的 loaded/prefilling/generating/waiting 狀態。
+- [x] 顯示 active request 列表（prefill progress、generated tokens、tps）。
+- [x] 提供中斷請求按鈕（`POST /admin/api/models/.../requests/.../abort`）。
+- [x] Status section 短報（總數、目前模型、最大 TPS）。
 
 **Stage 3：SSE Live Events**
-- [ ] 比較 snapshot，產生 `prefill-progress`、`generate-tokens`、`model-load`、`model-unload` 事件。
-- [ ] 在 panel/status 即時更新。
+- [x] 比較 snapshot，產生 `prefill-progress`、`generate-tokens`、`model-load`、`model-unload` 事件。
+- [x] 在 panel/status 即時更新。
 
 **Stage 4：整合 OpenChamber**
-- [ ] 透過 `openchamber contribute` 設定 `panel`、`statusSection`、`service`。
-- [ ] 安裝測試。
+- [x] 透過 `openchamber contribute` 設定 `panel`、`statusSection`、`service`。
+- [x] 安裝測試。
+
+**Stage 5：系統資源監控整合（新增）**
+- [ ] 在 `Snapshot` 加入 `system: SystemStats` 與 `history.system: Series`，維持 90 點 history
+- [ ] `OmlxSampler` 加入系統 CPU/Memory/Network 採樣（參考 lmstudio_monitor）
+- [ ] `status/main.ts` 增加 CPU/Memory/Network 三行顯示，與現有 oMLX 指標並排
+- [ ] 更新 `doc/Design.md` 記錄系統資源整合規範
+
+---
+
+### 4.4 系統資源整合設計（Stage 5）
+
+從 lmstudio_monitor 的 `Sampler` 整合系統資源：
+
+- **SystemStats**：`hostname`, `platform`, `release`, `arch`, `cpuModel`, `cores`, `cpu`（0~100 百分比），`load`（macOS/Linux），`memoryTotal`, `memoryUsed`, `uptimeSeconds`, `networkSpeedUp`, `networkSpeedDown`。
+- **history.system**：`cpu`、`memory` 兩條數列，各 90 點（3 分鐘）；目前 UI 只顯示即時數值，history 供未來擴展。
+- **採樣方式**：
+  - CPU：`os.cpus()`，前後采樣計算 idle/total 差值得整體 CPU 佔用。
+  - Memory：`os.totalmem()` - `os.freemem()`（若 `source.memoryUsed()` 失敗的 fallback）。
+  - Network：macOS `netstat -ib`，Linux `/proc/net/dev`，計算前後采樣差值的 byte/sec，跳過 `lo0`/`lo`。
+- **Status UI 顯示**：
+  - CPU：進度條顏色 `var(--oc-info)`。
+  - Memory：進度條顏色 `var(--oc-success)`。
+  - Network：僅數值，無進度條。
+  - 與現有 oMLX 指標分開，依序：System → oMLX。
 
 ---
 
